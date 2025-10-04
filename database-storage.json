@@ -1,0 +1,42 @@
+[
+  {
+    "id": "prod-db",
+    "name": "Production Database",
+    "type": "local",
+    "status": "connected",
+    "tables": [
+      {
+        "name": "Products",
+        "record_count": 5
+      },
+      {
+        "name": "Customers",
+        "record_count": 3
+      },
+      {
+        "name": "Orders",
+        "record_count": 7
+      }
+    ]
+  },
+  {
+    "id": "dev-db",
+    "name": "Development Database",
+    "type": "local",
+    "status": "connected",
+    "tables": [
+      {
+        "name": "Products",
+        "record_count": 5
+      },
+      {
+        "name": "Customers",
+        "record_count": 3
+      },
+      {
+        "name": "Orders",
+        "record_count": 7
+      }
+    ]
+  }
+]
