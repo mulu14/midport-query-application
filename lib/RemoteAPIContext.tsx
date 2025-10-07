@@ -8,7 +8,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { RemoteAPITenant, RemoteAPITable, RemoteAPIQueryResult, SOAPRequestConfig, StoredOAuth2Token } from '@/Entities/RemoteAPI';
+import type { RemoteAPITenant, RemoteAPITable, RemoteAPIQueryResult, APIRequestConfig, StoredOAuth2Token } from '@/Entities/RemoteAPI';
 
 /**
  * Context interface for Remote API functionality
@@ -154,18 +154,23 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
         action = 'delete';
       }
 
-      // Build ION API request configuration
-      const config: SOAPRequestConfig = {
+      // Build unified API request configuration
+      const config = {
         tenant: selectedTenant.name,
-        table: selectedTable.endpoint, // Service name like 'ServiceCall_v2'
+        table: selectedTable.endpoint,
+        apiType: (selectedTable as any).apiType || 'soap',
         action: action,
         parameters: parameters,
-        sqlQuery: query, // Keep original query for reference
-        fullUrl: selectedTenant.fullUrl, // Use configured full URL if available
-        company: '' // Company code for ION API activation header (can be added later)
+        sqlQuery: query,
+        fullUrl: selectedTenant.fullUrl,
+        company: '',
+        oDataService: (selectedTable as any).oDataService,
+        entityName: (selectedTable as any).entityName
       };
 
-      // Call server-side API route for OAuth2 authentication and ION API execution
+      // Use server-side API endpoint for OAuth2 and API calls
+      console.log(`🚀 Executing ${config.apiType?.toUpperCase()} query for ${config.tenant}/${config.table}`);
+      
       const response = await fetch('/api/remote-query', {
         method: 'POST',
         headers: {
@@ -174,22 +179,29 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({
           config: config,
           currentToken: currentToken
-        }),
+        })
       });
-
+      
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.details || errorData.error || 'Failed to execute remote API query');
-      }
-
-      const data = await response.json();
-      
-      // Store the token for future use
-      if (data.token) {
-        setCurrentToken(data.token);
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
       
-      setResults([data.result]);
+      const responseData = await response.json();
+      if (!responseData.success) {
+        throw new Error(responseData.error || 'Unknown server error');
+      }
+      
+      const result = responseData.result;
+      const newToken = responseData.token;
+      
+      // Update the stored token for future requests
+      if (newToken) {
+        setCurrentToken(newToken);
+      }
+      
+      console.log(`✅ Query completed: ${result.data?.summary || 'No summary available'}`);
+      setResults([result]);
 
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));

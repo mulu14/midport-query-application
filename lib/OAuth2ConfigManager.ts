@@ -6,6 +6,8 @@
  */
 
 import type { OAuth2Config, OAuth2TokenResponse, StoredOAuth2Token } from '@/Entities/RemoteAPI';
+import { config as loadDotenv } from 'dotenv';
+import path from 'path';
 
 /**
  * OAuth2 Configuration Manager for ION API
@@ -20,6 +22,23 @@ export class OAuth2ConfigManager {
    * @throws {Error} If required environment variables are missing
    */
   static loadConfigFromEnv(): OAuth2Config {
+    // Safety check for browser environment
+    if (typeof window !== 'undefined') {
+      throw new Error('OAuth2ConfigManager.loadConfigFromEnv() cannot be used in browser environment. Use server-side API endpoints instead.');
+    }
+    
+    // Explicitly load .env.local file if no ION_ variables are found
+    const ionVars = Object.keys(process.env).filter(key => key.startsWith('ION_'));
+    if (ionVars.length === 0) {
+      try {
+        const envPath = path.resolve(process.cwd(), '.env.local');
+        loadDotenv({ path: envPath, override: false });
+        console.log('\u{1F50D} OAuth2ConfigManager: .env.local loaded from:', envPath);
+      } catch (error) {
+        console.warn('\u{26A0}\uFE0F OAuth2ConfigManager: Failed to load .env.local:', error);
+      }
+    }
+    
     const requiredEnvVars = [
       'ION_CLIENT_ID',
       'ION_CLIENT_SECRET',
@@ -31,23 +50,41 @@ export class OAuth2ConfigManager {
     ];
     // Note: ION_SCOPE is not required for password grant type
 
+    console.log('🔍 OAuth2ConfigManager: Checking environment variables...');
+    console.log('🔍 NODE_ENV:', process.env.NODE_ENV);
+    console.log('🔍 Available ION_ vars:', Object.keys(process.env).filter(key => key.startsWith('ION_')).sort());
+
     // Check if we're in development mode and show helpful error
     const missingVars: string[] = [];
+    const foundVars: string[] = [];
+    
     for (const envVar of requiredEnvVars) {
-      if (!process.env[envVar]) {
+      const value = process.env[envVar];
+      if (!value || value.trim() === '') {
         missingVars.push(envVar);
+        console.log(`❌ Missing: ${envVar}`);
+      } else {
+        foundVars.push(envVar);
+        console.log(`✅ Found: ${envVar} (length: ${value.length})`);
       }
     }
+    
     if (missingVars.length > 0) {
-      const errorMessage = `
+      const errorMessage = `Missing required ION API environment variables:
 
 ${missingVars.map(v => `   - ${v}`).join('\n')}
+
+Please add these to your .env.local file:
 ${requiredEnvVars.map(v => `${v}=your_${v.toLowerCase()}_here`).join('\n')}
 
-      `.trim();
+Found variables: ${foundVars.join(', ')}
+Missing variables: ${missingVars.join(', ')}`;
       
+      console.error('❌ OAuth2ConfigManager: Environment variables error:', errorMessage);
       throw new Error(errorMessage);
     }
+    
+    console.log('✅ OAuth2ConfigManager: All required environment variables found');
 
     return {
       clientId: process.env.ION_CLIENT_ID!,

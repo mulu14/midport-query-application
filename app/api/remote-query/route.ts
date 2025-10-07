@@ -6,9 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { RemoteAPIManager } from '@/lib/RemoteAPIManager';
+import { UnifiedAPIManager } from '@/lib/UnifiedAPIManager';
 import { OAuth2ConfigManager } from '@/lib/OAuth2ConfigManager';
-import type { SOAPRequestConfig, StoredOAuth2Token } from '@/Entities/RemoteAPI';
+import type { APIRequestConfig, StoredOAuth2Token } from '@/Entities/RemoteAPI';
 
 
 /**
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config: SOAPRequestConfig = data.config;
+    const config: APIRequestConfig = data.config;
     const currentToken: StoredOAuth2Token | null = data.currentToken || null;
 
     console.log('🔐 API: Loading OAuth2 configuration from environment variables...');
@@ -63,10 +63,10 @@ export async function POST(request: NextRequest) {
       expiresAt: new Date(token.expiresAt).toISOString()
     });
 
-    // Execute the remote API query
-    console.log('🌐 API: Executing ION API query...');
-    const result = await RemoteAPIManager.executeQueryWithToken(config, token);
-    console.log('✅ API: ION API query executed successfully');
+    // Execute the remote API query using UnifiedAPIManager
+    console.log(`🌐 API: Executing ${config.apiType?.toUpperCase() || 'SOAP'} API query...`);
+    const result = await UnifiedAPIManager.executeQueryWithOAuth2(config, '', '', token);
+    console.log('✅ API: API query executed successfully');
 
     return NextResponse.json({
       success: true,

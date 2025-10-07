@@ -6,6 +6,11 @@
  */
 
 /**
+ * API types supported by the platform
+ */
+export type APIType = 'soap' | 'rest';
+
+/**
  * Represents a table within a remote API database
  * @interface RemoteAPITable
  */
@@ -14,6 +19,12 @@ export interface RemoteAPITable {
   name: string;
   /** The API endpoint path for this table */
   endpoint: string;
+  /** API type (SOAP or REST) */
+  apiType: APIType;
+  /** OData service name for REST APIs (e.g., 'tsapi.socServiceOrders') */
+  oDataService?: string;
+  /** Entity name for REST APIs (e.g., 'Orders') */
+  entityName?: string;
 }
 
 /**
@@ -91,24 +102,39 @@ export interface RemoteAPITenant {
 }
 
 /**
- * Configuration object for SOAP API requests
- * @interface SOAPRequestConfig
+ * Configuration object for API requests (SOAP and REST)
+ * @interface APIRequestConfig
  */
-export interface SOAPRequestConfig {
+export interface APIRequestConfig {
   /** The tenant name for the API request */
   tenant: string;
-  /** The table endpoint for the API request */
+  /** The table/service endpoint for the API request */
   table: string;
-  /** The SOAP action to perform (Read, Create, Update, Delete) */
+  /** The API type (SOAP or REST) */
+  apiType: APIType;
+  /** The action to perform (List, Create, Update, Delete for SOAP; GET, POST, PUT, DELETE for REST) */
   action: string;
-  /** Optional parameters for the SOAP request */
+  /** Optional parameters for the request */
   parameters?: Record<string, any>;
   /** Original SQL query for reference during conversion */
   sqlQuery?: string;
   /** Full URL from the database configuration */
   fullUrl?: string;
-  /** Company code for ION API activation header */
+  /** Company code for ION API activation header (SOAP only) */
   company?: string;
+  /** OData service name for REST APIs */
+  oDataService?: string;
+  /** Entity name for REST APIs */
+  entityName?: string;
+}
+
+/**
+ * Legacy SOAP-only configuration (for backward compatibility)
+ * @interface SOAPRequestConfig
+ * @deprecated Use APIRequestConfig instead
+ */
+export interface SOAPRequestConfig extends APIRequestConfig {
+  apiType: 'soap';
 }
 
 /**

@@ -69,7 +69,8 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
         base_url: '',
         tenant_name: '',
         services: '',
-        tables: ''
+        tables: '',
+        api_type: 'soap'
       });
     }
   }, [open, mode]);
@@ -87,6 +88,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
     tenant_name: string;
     services: string;
     tables: string; // Comma-separated string for input, converted to array on submit
+    api_type: 'soap' | 'rest'; // API type selection
   }>({
     name: '',
     type: 'sqlite',
@@ -97,7 +99,8 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
     base_url: '',
     tenant_name: '',
     services: '',
-    tables: ''
+    tables: '',
+    api_type: 'soap'
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -201,7 +204,8 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
             base_url: '',
             tenant_name: '',
             services: '',
-            tables: ''
+            tables: '',
+            api_type: 'soap'
           });
 
           onSuccess();
@@ -238,7 +242,8 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
           base_url: '',
           tenant_name: '',
           services: '',
-          tables: ''
+          tables: '',
+          api_type: 'soap'
         });
 
         onSuccess();
@@ -305,6 +310,30 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="api_type" className="text-white">API Type</Label>
+                <Select
+                  value={formData.api_type || 'soap'}
+                  onValueChange={(value: 'soap' | 'rest') => {
+                    setFormData({ 
+                      ...formData, 
+                      api_type: value,
+                      // Update services path based on API type
+                      services: value === 'rest' ? 'LN/lnapi' : 'LN/c4ws/services'
+                    })
+                  }}
+                >
+                  <SelectTrigger className="bg-[#0f3d4f] border-[#1a5f7a] text-white focus:ring-2 focus:ring-blue-500 text-sm sm:text-base h-10 sm:h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a5f7a] border-[#0f3d4f] text-white">
+                    <SelectItem value="soap" className="text-white hover:bg-[#2a6b83] focus:bg-[#2a6b83]">SOAP (XML)</SelectItem>
+                    <SelectItem value="rest" className="text-white hover:bg-[#2a6b83] focus:bg-[#2a6b83]">REST (OData)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-[#8bb3cc]">Choose API type for the services you're adding now. The same tenant can have both SOAP and REST services.</p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="services" className="text-white">Services Path</Label>
@@ -312,7 +341,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
                     id="services"
                     value={formData.services}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, services: e.target.value })}
-                    placeholder="LN/c4ws/services"
+                    placeholder={formData.api_type === 'rest' ? 'LN/lnapi' : 'LN/c4ws/services'}
                     required
                     className="bg-[#0f3d4f] border-[#1a5f7a] text-white placeholder:text-[#8bb3cc] focus:ring-2 focus:ring-blue-500 text-sm sm:text-base h-10 sm:h-11"
                   />
@@ -328,7 +357,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
                     required
                     className="bg-[#0f3d4f] border-[#1a5f7a] text-white placeholder:text-[#8bb3cc] focus:ring-2 focus:ring-blue-500 text-sm sm:text-base h-10 sm:h-11"
                   />
-                  <p className="text-xs text-[#8bb3cc]">Comma-separated service names (e.g., BusinessPartner_v3,ATPService_WT,SalesOrder). If tenant exists, new services will be added to it.</p>
+                  <p className="text-xs text-[#8bb3cc]">Services for this API type. Same tenant supports both: SOAP (BusinessPartner_v3,ServiceCall_v2) and REST (tdapi.slsSalesOrder/orders,tsapi.socServiceOrder/Orders). Add different types separately.</p>
                 </div>
               </div>
 

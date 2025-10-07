@@ -8,7 +8,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, ChevronDown, ChevronRight, Globe, Server, Plus, Edit, Trash2 } from 'lucide-react';
+import { Table, ChevronDown, ChevronRight, Globe, Server, Plus, Edit, Trash2, Code2, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { useRemoteAPI } from '@/lib/RemoteAPIContext';
@@ -46,12 +46,22 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
   const { setMode } = useSidebarMode();
 
   const [expandedTenants, setExpandedTenants] = useState<string[]>([]);
+  const [expandedApiTypes, setExpandedApiTypes] = useState<string[]>([]);
 
   const toggleTenant = (tenantId: string) => {
     setExpandedTenants(prev =>
       prev.includes(tenantId)
         ? prev.filter(id => id !== tenantId)
         : [...prev, tenantId]
+    );
+  };
+
+  const toggleApiType = (tenantId: string, apiType: 'soap' | 'rest') => {
+    const key = `${tenantId}-${apiType}`;
+    setExpandedApiTypes(prev =>
+      prev.includes(key)
+        ? prev.filter(id => id !== key)
+        : [...prev, key]
     );
   };
 
@@ -109,6 +119,11 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                   >
                     <Server className="w-4 h-4" />
                     <span className="text-sm font-medium truncate">{tenant.name}</span>
+                    {(tenant as any).hasMultipleApiTypes && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-400/30">
+                        MIXED
+                      </span>
+                    )}
                     <span className={`text-xs ${getStatusColor(tenant.status)}`}>
                       •
                     </span>
@@ -154,7 +169,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                 </div>
               </div>
 
-              {/* Tables */}
+              {/* API Type Groups */}
               <AnimatePresence>
                 {expandedTenants.includes(tenant.id) && (
                   <motion.div
@@ -163,24 +178,135 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                     exit={{ opacity: 0, height: 0 }}
                     className="ml-4 space-y-1 border-l border-slate-600/30 pl-3"
                   >
-                    {tenant.tables && tenant.tables.length > 0 ? (
-                      tenant.tables.map((table) => (
-                        <button
-                          key={`${tenant.id}-${table.name}`}
-                          onClick={() => selectTableAndQuery(tenant, table)}
-                          className={`w-full text-left p-2 rounded transition-colors duration-200 text-xs hover:bg-slate-700/50 hover:text-white flex items-center gap-2 group ${
-                            selectedTable?.name === table.name && selectedTenant?.id === tenant.id ? 'bg-blue-500/30 text-white border border-blue-500/50' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
-                          }`}
-                        >
-                          <Table className="w-3 h-3" />
-                          <span className="text-sm font-medium flex-1 text-left text-white">{table.name}</span>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="text-xs text-slate-400 py-2">
-                        No tables found
-                      </div>
-                    )}
+                    {(() => {
+                      // Group services by API type
+                      const soapServices = (tenant.tables || []).filter((t: any) => (t.apiType || 'soap') === 'soap');
+                      const restServices = (tenant.tables || []).filter((t: any) => t.apiType === 'rest');
+                      
+                      return (
+                        <div className="space-y-1">
+                          {/* SOAP Services Group */}
+                          {soapServices.length > 0 && (
+                            <div>
+                              <button
+                                onClick={() => toggleApiType(tenant.id, 'soap')}
+                                className="w-full flex items-center gap-2 p-1.5 text-left hover:bg-slate-700/30 rounded transition-colors duration-200"
+                              >
+                                {expandedApiTypes.includes(`${tenant.id}-soap`) ? (
+                                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                                ) : (
+                                  <ChevronRight className="w-3 h-3 text-slate-400" />
+                                )}
+                                <Code2 className="w-4 h-4 text-green-400" />
+                                <span className="text-sm font-medium text-green-300">SOAP Services</span>
+                                <span className="text-xs text-slate-400">({soapServices.length})</span>
+                              </button>
+                              
+                              <AnimatePresence>
+                                {expandedApiTypes.includes(`${tenant.id}-soap`) && (
+                                  <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="ml-6 space-y-0.5"
+                                  >
+                                    {soapServices.map((table: any) => (
+                                      <button
+                                        key={`${tenant.id}-soap-${table.name}`}
+                                        onClick={() => selectTableAndQuery(tenant, table)}
+                                        className={`w-full text-left p-2 rounded transition-colors duration-200 text-xs hover:bg-slate-700/50 hover:text-white flex items-center gap-2 group ${
+                                          selectedTable?.name === table.name && selectedTenant?.id === tenant.id ? 'bg-blue-500/30 text-white border border-blue-500/50' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
+                                        }`}
+                                      >
+                                        <Table className="w-3 h-3" />
+                                        <span className="text-sm font-medium flex-1 text-left text-white">{table.name}</span>
+                                      </button>
+                                    ))}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          )}
+                          
+                          {/* REST Services Group - Always show */}
+                          <div>
+                            <button
+                              onClick={() => toggleApiType(tenant.id, 'rest')}
+                              className="w-full flex items-center gap-2 p-1.5 text-left hover:bg-slate-700/30 rounded transition-colors duration-200"
+                            >
+                              {expandedApiTypes.includes(`${tenant.id}-rest`) ? (
+                                <ChevronDown className="w-3 h-3 text-slate-400" />
+                              ) : (
+                                <ChevronRight className="w-3 h-3 text-slate-400" />
+                              )}
+                              <Database className="w-4 h-4 text-blue-400" />
+                              <span className="text-sm font-medium text-blue-300">REST Services</span>
+                              <span className="text-xs text-slate-400">({restServices.length})</span>
+                            </button>
+                            
+                            <AnimatePresence>
+                              {expandedApiTypes.includes(`${tenant.id}-rest`) && (
+                                <motion.div
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: 'auto' }}
+                                  exit={{ opacity: 0, height: 0 }}
+                                  className="ml-6 space-y-0.5"
+                                >
+                                  {restServices.length > 0 ? (
+                                    restServices.map((table: any) => (
+                                      <button
+                                        key={`${tenant.id}-rest-${table.name}`}
+                                        onClick={() => selectTableAndQuery(tenant, table)}
+                                        className={`w-full text-left p-2 rounded transition-colors duration-200 text-xs hover:bg-slate-700/50 hover:text-white flex items-center gap-2 group ${
+                                          selectedTable?.name === table.name && selectedTenant?.id === tenant.id ? 'bg-blue-500/30 text-white border border-blue-500/50' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
+                                        }`}
+                                      >
+                                        <Table className="w-3 h-3" />
+                                        <span className="text-sm font-medium flex-1 text-left text-white">{table.name}</span>
+                                        {table.oDataService && (
+                                          <span className="text-xs text-slate-400 truncate max-w-[80px]">
+                                            {table.oDataService}
+                                          </span>
+                                        )}
+                                      </button>
+                                    ))
+                                  ) : (
+                                    <div className="p-2 text-xs text-slate-400 text-center">
+                                      <div className="mb-2">No REST services configured yet</div>
+                                      <button
+                                        onClick={() => {
+                                          setMode('remote');
+                                          setShowAddDialog(true);
+                                        }}
+                                        className="text-xs text-blue-400 hover:text-blue-300 underline"
+                                      >
+                                        + Add REST API Service
+                                      </button>
+                                    </div>
+                                  )}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                          
+                          {/* No SOAP services message */}
+                          {soapServices.length === 0 && (
+                            <div className="text-xs text-slate-400 py-2 text-center">
+                              <div className="mb-2">No SOAP services configured yet</div>
+                              <button
+                                onClick={() => {
+                                  setMode('remote');
+                                  setShowAddDialog(true);
+                                }}
+                                className="text-xs text-green-400 hover:text-green-300 underline"
+                              >
+                                + Add SOAP API Service
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </motion.div>
                 )}
               </AnimatePresence>

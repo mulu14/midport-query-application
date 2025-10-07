@@ -166,10 +166,11 @@ export default function IONAPIResultsDisplay({ result }: IONAPIResultsDisplayPro
                         .filter(field => allKeys.some(key => key.toLowerCase().includes(field.toLowerCase())))
                         .map(field => allKeys.find(key => key.toLowerCase().includes(field.toLowerCase())))
                         .filter(Boolean)
+                        .filter((key, index, array) => array.indexOf(key) === index) // Remove duplicates
                         .slice(0, 5); // Show max 5 columns
                         
-                      return topKeys.map(key => (
-                        <th key={key} className="px-3 py-2 text-left text-xs font-medium text-slate-300 uppercase tracking-wider truncate">
+                      return topKeys.map((key, index) => (
+                        <th key={`header-${index}-${key}`} className="px-3 py-2 text-left text-xs font-medium text-slate-300 uppercase tracking-wider truncate">
                           {key}
                         </th>
                       ));
@@ -184,13 +185,14 @@ export default function IONAPIResultsDisplay({ result }: IONAPIResultsDisplayPro
                       .filter(field => allKeys.some(key => key.toLowerCase().includes(field.toLowerCase())))
                       .map(field => allKeys.find(key => key.toLowerCase().includes(field.toLowerCase())))
                       .filter(Boolean)
+                      .filter((key, keyIndex, array) => array.indexOf(key) === keyIndex) // Remove duplicates
                       .slice(0, 5);
                     
                     return (
                       <tr key={index} className="border-t border-slate-600/30 hover:bg-slate-600/20">
                         <td className="px-3 py-2 text-sm text-white">{index + 1}</td>
-                        {topKeys.map(key => (
-                          <td key={key} className="px-3 py-2 text-sm text-white truncate max-w-32">
+                        {topKeys.map((key, cellIndex) => (
+                          <td key={`row-${index}-col-${cellIndex}-${key}`} className="px-3 py-2 text-sm text-white truncate max-w-32">
                             {record[key as string] === null ? (
                               <span className="text-slate-500 italic">null</span>
                             ) : (

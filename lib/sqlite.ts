@@ -249,6 +249,10 @@ export class SQLiteManager {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           database_id INTEGER NOT NULL,
           name TEXT NOT NULL,
+          endpoint TEXT NOT NULL,
+          api_type TEXT DEFAULT 'soap' CHECK(api_type IN ('soap', 'rest')),
+          odata_service TEXT,
+          entity_name TEXT,
           schema_definition TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -296,6 +300,31 @@ export class SQLiteManager {
           FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
         )
       `);
+
+      // Migration for remote_api_tables - add new columns if they don't exist
+      try {
+        const tableColumns = await this.apiGet(`PRAGMA table_info(remote_api_tables)`);
+        
+        // Add api_type column if it doesn't exist
+        const hasApiTypeColumn = tableColumns.some((col: any) => col.name === 'api_type');
+        if (!hasApiTypeColumn) {
+          await this.apiExec(`ALTER TABLE remote_api_tables ADD COLUMN api_type TEXT DEFAULT 'soap' CHECK(api_type IN ('soap', 'rest'))`);
+        }
+
+        // Add odata_service column if it doesn't exist
+        const hasODataServiceColumn = tableColumns.some((col: any) => col.name === 'odata_service');
+        if (!hasODataServiceColumn) {
+          await this.apiExec(`ALTER TABLE remote_api_tables ADD COLUMN odata_service TEXT`);
+        }
+
+        // Add entity_name column if it doesn't exist
+        const hasEntityNameColumn = tableColumns.some((col: any) => col.name === 'entity_name');
+        if (!hasEntityNameColumn) {
+          await this.apiExec(`ALTER TABLE remote_api_tables ADD COLUMN entity_name TEXT`);
+        }
+      } catch (error) {
+        // Migration error (likely table is new or already migrated)
+      }
 
       // Create indexes for better performance
       await this.apiExec(`
@@ -394,6 +423,51 @@ export class SQLiteManager {
    * @returns {string} result.message - Success or informational message
    * @throws {Error} If database operation fails
    */
+  /**
+   * Parses a service definition to extract API components (handles hundreds of possible services)
+   * @private
+   * @static
+   * @param {string} serviceDef - Service definition
+   *   SOAP examples: 'BusinessPartner_v3', 'ServiceCall_v2', 'Customer_v1'
+   *   REST examples: 'tdapi.slsSalesOrder/orders', 'tsapi.socServiceOrder/Orders', 'hrapi.empEmployee/Employees'
+   * @param {string} servicesPath - Services path (e.g., 'LN/c4ws/services' or 'LN/lnapi')
+   * @returns {object} Parsed service information
+   */
+  private static parseServiceDefinition(serviceDef: string, servicesPath: string): {
+    name: string;
+    endpoint: string;
+    apiType: 'soap' | 'rest';
+    oDataService?: string;
+    entityName?: string;
+  } {
+    // Determine API type based on services path
+    const apiType: 'soap' | 'rest' = servicesPath.includes('lnapi') ? 'rest' : 'soap';
+    
+    if (apiType === 'rest' && serviceDef.includes('/')) {
+      // Generic REST API service parsing: 'anyapi.anyService/AnyEntity'
+      const parts = serviceDef.split('/');
+      if (parts.length >= 2) {
+        const oDataService = parts[0]; // e.g., 'tdapi.slsSalesOrder', 'tsapi.socServiceOrder', 'hrapi.empEmployee'
+        const entityName = parts[1];   // e.g., 'orders', 'Orders', 'Employees'
+        
+        return {
+          name: serviceDef,
+          endpoint: serviceDef,
+          apiType: 'rest',
+          oDataService,
+          entityName
+        };
+      }
+    }
+    
+    // SOAP API service or invalid REST format - treat as SOAP
+    return {
+      name: serviceDef,
+      endpoint: serviceDef,
+      apiType: 'soap'
+    };
+  }
+
   static async createRemoteAPIDatabase(data: { name?: string; fullUrl: string; baseUrl: string; tenantName: string; services: string; tables: string[] }): Promise<any> {
     await this.initialize();
 
@@ -420,9 +494,10 @@ export class SQLiteManager {
       if (newTables.length > 0) {
         // Insert only new tables
         for (const table of newTables) {
+          const serviceInfo = this.parseServiceDefinition(table, data.services);
           await this.apiPost(
-            'INSERT INTO remote_api_tables (database_id, name, endpoint) VALUES (?, ?, ?)',
-            [tenantId, table, table]
+            'INSERT INTO remote_api_tables (database_id, name, endpoint, api_type, odata_service, entity_name) VALUES (?, ?, ?, ?, ?, ?)',
+            [tenantId, serviceInfo.name, serviceInfo.endpoint, serviceInfo.apiType, serviceInfo.oDataService || null, serviceInfo.entityName || null]
           );
         }
       }
@@ -452,9 +527,10 @@ export class SQLiteManager {
         // Insert tables
         if (data.tables && data.tables.length > 0) {
           for (const table of data.tables) {
+            const serviceInfo = this.parseServiceDefinition(table, data.services);
             await this.apiPost(
-              'INSERT INTO remote_api_tables (database_id, name, endpoint) VALUES (?, ?, ?)',
-              [tenantId, table, table]
+              'INSERT INTO remote_api_tables (database_id, name, endpoint, api_type, odata_service, entity_name) VALUES (?, ?, ?, ?, ?, ?)',
+              [tenantId, serviceInfo.name, serviceInfo.endpoint, serviceInfo.apiType, serviceInfo.oDataService || null, serviceInfo.entityName || null]
             );
           }
         }
@@ -491,7 +567,7 @@ export class SQLiteManager {
     for (let index = 0; index < databases.length; index++) {
       const db = databases[index];
       const tables = db.id ? await this.apiGet(`
-        SELECT name FROM remote_api_tables WHERE database_id = ? ORDER BY name
+        SELECT name, endpoint, api_type, odata_service, entity_name FROM remote_api_tables WHERE database_id = ? ORDER BY name
       `, [db.id]) : [];
 
       result.push({
@@ -506,8 +582,15 @@ export class SQLiteManager {
         updatedAt: new Date(db.updated_at),
         tables: tables.map((table: any) => ({
           name: table.name,
-          endpoint: table.name // Use name as endpoint for now
-        }))
+          endpoint: table.endpoint || table.name,
+          apiType: table.api_type || 'soap',
+          oDataService: table.odata_service,
+          entityName: table.entity_name
+        })),
+        // Add summary statistics about API types in this tenant
+        soapServicesCount: tables.filter((t: any) => (t.api_type || 'soap') === 'soap').length,
+        restServicesCount: tables.filter((t: any) => t.api_type === 'rest').length,
+        hasMultipleApiTypes: tables.some((t: any) => (t.api_type || 'soap') === 'soap') && tables.some((t: any) => t.api_type === 'rest')
       });
     }
 
