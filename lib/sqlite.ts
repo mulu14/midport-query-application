@@ -421,8 +421,8 @@ export class SQLiteManager {
         // Insert only new tables
         for (const table of newTables) {
           await this.apiPost(
-            'INSERT INTO remote_api_tables (database_id, name) VALUES (?, ?)',
-            [tenantId, table]
+            'INSERT INTO remote_api_tables (database_id, name, endpoint) VALUES (?, ?, ?)',
+            [tenantId, table, table]
           );
         }
       }
@@ -453,8 +453,8 @@ export class SQLiteManager {
         if (data.tables && data.tables.length > 0) {
           for (const table of data.tables) {
             await this.apiPost(
-              'INSERT INTO remote_api_tables (database_id, name) VALUES (?, ?)',
-              [tenantId, table]
+              'INSERT INTO remote_api_tables (database_id, name, endpoint) VALUES (?, ?, ?)',
+              [tenantId, table, table]
             );
           }
         }

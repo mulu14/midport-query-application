@@ -91,7 +91,7 @@ export default function QueryEditor({ query, onChange, onExecute, isExecuting }:
         <textarea
           value={query}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter SQL query... (e.g., SELECT * FROM Products)"
+          placeholder="Enter SQL query with filters...\ne.g., SELECT * FROM Customers WHERE Country='Mexico';\ne.g., SELECT * FROM Products WHERE Price > 100 AND Category='Electronics';"
           className="w-full h-24 sm:h-32 px-3 sm:px-4 py-2 sm:py-3 bg-[#0f3d4f] border border-[#1a5f7a] rounded-lg font-mono text-sm text-white placeholder:text-[#8bb3cc] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
           spellCheck={false}
         />

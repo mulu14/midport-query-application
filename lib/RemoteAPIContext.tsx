@@ -208,46 +208,49 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * Parse parameters from query and table configuration
+   * Parse parameters from query and table configuration using advanced SQL parsing
    * @private
-   * @param {string} query - The query string
+   * @param {string} query - The SQL query string
    * @param {RemoteAPITable} table - The selected table/service
-   * @returns {Record<string, any>} Parameters object
+   * @returns {Record<string, any>} Parameters object with parsed SQL conditions
    */
   const parseParametersFromQuery = (query: string, table: RemoteAPITable): Record<string, any> => {
-    const parameters: Record<string, any> = {};
+    // Import SQLParser dynamically to avoid import issues
+    const { SQLParser } = require('@/lib/SQLParser');
+    
+    // Use advanced SQL parsing for WHERE clauses and other SQL features
+    const sqlParameters = SQLParser.parseSQL(query);
+    
+    // Start with parsed SQL parameters
+    const parameters: Record<string, any> = { ...sqlParameters };
 
-    // Parse query for filter parameters (basic implementation)
-    const queryLower = query.toLowerCase();
-
-    // Extract filter conditions from query
-    if (queryLower.includes('where') || queryLower.includes('filter')) {
-      // Simple parameter extraction - can be enhanced
-      const filterMatch = queryLower.match(/where\s+(.+)/i);
-      if (filterMatch) {
-        parameters.filter = filterMatch[1].trim();
+    // Legacy fallback for non-SQL queries (maintain backward compatibility)
+    if (!query.toLowerCase().includes('select') && !query.toLowerCase().includes('where')) {
+      const queryLower = query.toLowerCase();
+      
+      // Extract filter conditions from non-SQL queries
+      if (queryLower.includes('where') || queryLower.includes('filter')) {
+        const filterMatch = queryLower.match(/where\s+(.+)/i);
+        if (filterMatch) {
+          parameters.legacyFilter = filterMatch[1].trim();
+        }
       }
     }
 
-    // Extract limit parameter
-    const limitMatch = queryLower.match(/limit\s+(\d+)/i);
-    if (limitMatch) {
-      parameters.limit = parseInt(limitMatch[1]);
-    }
-
-    // Extract service-specific parameters based on table type
+    // Add service-specific metadata (keep existing logic)
     if (table.endpoint.includes('ServiceCall')) {
       parameters.serviceType = 'ServiceCall';
-      // Add default parameters for service calls
-    } else if (table.endpoint.includes('Customer')) {
+    } else if (table.endpoint.includes('Customer') || table.endpoint.includes('BusinessPartner')) {
       parameters.entityType = 'Customer';
-      // Add default parameters for customer queries
-    } else if (table.endpoint.includes('Order')) {
+    } else if (table.endpoint.includes('Order') || table.endpoint.includes('SalesOrder')) {
       parameters.entityType = 'Order';
-      // Add default parameters for order queries
+    } else if (table.endpoint.includes('Address')) {
+      parameters.entityType = 'Address';
+    } else if (table.endpoint.includes('ATPService')) {
+      parameters.entityType = 'ATP';
     }
 
-    // Add timestamp for all requests
+    // Always add timestamp (overriding the one from SQLParser if needed)
     parameters.timestamp = new Date().toISOString();
 
     return parameters;

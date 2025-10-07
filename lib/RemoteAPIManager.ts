@@ -30,7 +30,7 @@ export class RemoteAPIManager {
   /**
    * Generates a SOAP envelope for ION API requests with company parameter support
    * @static
-   * @param {string} action - The SOAP action to perform (e.g., 'read', 'create', 'update', 'delete')
+   * @param {string} action - The SOAP action to perform (e.g., 'list', 'create', 'update', 'delete')
    * @param {Record<string, any>} [parameters={}] - Optional parameters for the request
    * @param {string} [company=''] - Company code for ION API activation header
    * @param {string} [service=''] - The ION service name (e.g., 'ServiceCall_v2', 'Customer_v1', 'WarehouseOrder_v2')
@@ -50,24 +50,67 @@ export class RemoteAPIManager {
     // Build parameters XML based on the action type and service
     let paramXml = '';
 
-    if (action.toLowerCase() === 'read' || action.toLowerCase() === 'list') {
-      if (service && parameters.customerOrder) {
-        paramXml = `
+    if (action.toLowerCase() === 'list' || action.toLowerCase() === 'read') {
+      // Build generic ListRequest for all ION API services
+      if (Object.keys(parameters).length > 0) {
+        // Build filter conditions from parsed SQL or direct parameters
+        const filterConditions = Object.entries(parameters)
+          .filter(([key, value]) => 
+            key !== 'limit' && 
+            key !== 'offset' && 
+            key !== 'timestamp' && 
+            key !== 'orderBy' && 
+            key !== 'orderDirection' &&
+            key !== 'serviceType' &&
+            key !== 'entityType' &&
+            key !== 'legacyFilter' &&
+            !key.endsWith('_operator')
+          )
+          .map(([key, value]) => {
+            // Check if there's a specific operator for this field
+            const operatorKey = `${key}_operator`;
+            const comparisonOperator = parameters[operatorKey] || 'eq';
+            
+            // Handle array values (for IN operator)
+            if (Array.isArray(value)) {
+              return `
+                  <ComparisonExpression>
+                    <comparisonOperator>in</comparisonOperator>
+                    <attributeName>${key}</attributeName>
+                    <instanceValue>${value.join(',')}</instanceValue>
+                  </ComparisonExpression>`;
+            } else {
+              return `
+                  <ComparisonExpression>
+                    <comparisonOperator>${comparisonOperator}</comparisonOperator>
+                    <attributeName>${key}</attributeName>
+                    <instanceValue>${value}</instanceValue>
+                  </ComparisonExpression>`;
+            }
+          })
+          .join('');
+
+        if (filterConditions) {
+          paramXml = `
             <ListRequest>
               <ControlArea>
-                <Filter>
-                  <ComparisonExpression>
-                    <comparisonOperator>eq</comparisonOperator>
-                    <attributeName>${service}.OutboundLine.CustomerOrder</attributeName>
-                    <instanceValue>${parameters.customerOrder}</instanceValue>
-                  </ComparisonExpression>
+                <Filter>${filterConditions}
                 </Filter>
               </ControlArea>
             </ListRequest>`;
+        } else {
+          // Simple ListRequest without filters
+          paramXml = `
+            <ListRequest>
+              <ControlArea/>
+            </ListRequest>`;
+        }
       } else {
-        paramXml = Object.entries(parameters)
-          .map(([key, value]) => `<${key}>${value}</${key}>`)
-          .join('');
+        // Default ListRequest for generic list operations
+        paramXml = `
+            <ListRequest>
+              <ControlArea/>
+            </ListRequest>`;
       }
     } else {
       // For other actions, build parameter XML directly
