@@ -2,7 +2,7 @@
  * @fileoverview Root Layout Component for Midport SQL Query Platform
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import type { Metadata } from "next";

@@ -2,7 +2,7 @@
  * @fileoverview Next.js configuration file for Midport SQL Query Platform
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import type { NextConfig } from "next";

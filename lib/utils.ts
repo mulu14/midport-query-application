@@ -2,7 +2,7 @@
  * @fileoverview Utility functions for CSS class management
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import { clsx, type ClassValue } from "clsx"

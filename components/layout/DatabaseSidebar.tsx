@@ -2,7 +2,7 @@
  * @fileoverview Database Sidebar Component for Navigation Between Local and Remote Databases
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 'use client';

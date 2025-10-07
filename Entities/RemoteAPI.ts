@@ -2,7 +2,7 @@
  * @fileoverview TypeScript interfaces and types for Remote API functionality
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 /**
@@ -14,6 +14,59 @@ export interface RemoteAPITable {
   name: string;
   /** The API endpoint path for this table */
   endpoint: string;
+}
+
+/**
+ * OAuth2 authentication configuration for ION APIs
+ * @interface OAuth2Config
+ */
+export interface OAuth2Config {
+  /** OAuth2 client ID */
+  clientId: string;
+  /** OAuth2 client secret */
+  clientSecret: string;
+  /** Username for resource owner grant */
+  username: string;
+  /** Password for resource owner grant */
+  password: string;
+  /** Token endpoint URL */
+  tokenEndpoint: string;
+  /** Scope for the OAuth2 request */
+  scope?: string;
+}
+
+/**
+ * OAuth2 token response from ION API
+ * @interface OAuth2TokenResponse
+ */
+export interface OAuth2TokenResponse {
+  /** Access token for API authentication */
+  access_token: string;
+  /** Token type (usually "Bearer") */
+  token_type: string;
+  /** Token expiration time in seconds */
+  expires_in: number;
+  /** Refresh token for obtaining new access tokens */
+  refresh_token?: string;
+  /** Scope granted by the token */
+  scope?: string;
+}
+
+/**
+ * Stored OAuth2 token with metadata
+ * @interface StoredOAuth2Token
+ */
+export interface StoredOAuth2Token {
+  /** The access token */
+  accessToken: string;
+  /** Token type */
+  tokenType: string;
+  /** Expiration timestamp */
+  expiresAt: number;
+  /** Refresh token if available */
+  refreshToken?: string;
+  /** Scope of the token */
+  scope?: string;
 }
 
 /**
@@ -31,6 +84,10 @@ export interface RemoteAPITenant {
   status: 'connected' | 'disconnected' | 'error';
   /** Full URL from the database configuration */
   fullUrl?: string;
+  /** OAuth2 authentication configuration */
+  oauth2Config?: OAuth2Config;
+  /** Current OAuth2 token (stored securely) */
+  oauth2Token?: StoredOAuth2Token;
 }
 
 /**
@@ -50,6 +107,8 @@ export interface SOAPRequestConfig {
   sqlQuery?: string;
   /** Full URL from the database configuration */
   fullUrl?: string;
+  /** Company code for ION API activation header */
+  company?: string;
 }
 
 /**
@@ -61,12 +120,25 @@ export interface RemoteAPIQueryResult {
   success: boolean;
   /** The URL that was called */
   url: string;
-  /** The SOAP action that was performed */
+  /** The action that was performed */
   action: string;
   /** HTTP status code from the response */
   status: number;
   /** HTTP status text from the response */
   statusText: string;
+  /** Parsed structured data from ION API response */
+  data?: {
+    success: boolean;
+    serviceType: string;
+    recordCount: number;
+    records: any[];
+    summary: string;
+    error?: boolean;
+    message?: string;
+    type?: string;
+  };
+  /** Raw SOAP XML response */
+  rawResponse?: string;
   /** Additional notes about the execution */
   note: string;
 }
@@ -90,6 +162,8 @@ export interface NewRemoteAPITenant {
   status: 'active' | 'inactive';
   /** Display name for the tenant */
   name: string;
+  /** OAuth2 authentication configuration */
+  oauth2Config?: OAuth2Config;
 }
 
 /**

@@ -3,8 +3,6 @@ import { SQLiteManager } from '@/lib/sqlite';
 
 export async function GET() {
   try {
-    await SQLiteManager.initialize();
-
     // Get record counts from all tables
     const [customersCount, productsCount, ordersCount] = await Promise.all([
       SQLiteManager['apiGet']('SELECT COUNT(*) as count FROM customers').then(result => result[0].count),

@@ -2,14 +2,13 @@
  * @fileoverview Remote API Context Provider for managing remote API databases and queries
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { RemoteAPITenant, RemoteAPITable, RemoteAPIQueryResult, SOAPRequestConfig } from '@/Entities/RemoteAPI';
-import { RemoteAPIManager } from './RemoteAPIManager';
+import type { RemoteAPITenant, RemoteAPITable, RemoteAPIQueryResult, SOAPRequestConfig, StoredOAuth2Token } from '@/Entities/RemoteAPI';
 
 /**
  * Context interface for Remote API functionality
@@ -78,10 +77,12 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [showAddDialog, setShowAddDialog] = useState<boolean>(false);
+  
+  // OAuth2 token management with service account
+  const [currentToken, setCurrentToken] = useState<StoredOAuth2Token | null>(null);
 
   const loadTenants = async () => {
     try {
-      console.log('🔄 Loading remote tenants...');
 
       // Load from API endpoint instead of direct SQLite access
       const response = await fetch('/api/remote-databases');
@@ -112,9 +113,7 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      console.log('✅ Loaded remote tenants:', formattedTenants.length);
     } catch (error) {
-      console.error('❌ Error loading tenants:', error);
       setError('Failed to load remote tenants');
     }
   };
@@ -138,47 +137,61 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
     setResults([]);
 
     try {
-      console.log('Executing SQL query:', query);
-      console.log('Selected tenant:', selectedTenant.name);
-      console.log('Selected table:', selectedTable.name);
 
-      // Parse the SQL query to determine the action and parameters
-      const sqlQuery = query.trim().toLowerCase();
-      let action = 'Read';
-      let parameters = {};
+      // Parse the query to determine action and parameters
+      const queryStr = query.trim().toLowerCase();
+      let action = 'List'; // Default action for ION API
+      let parameters = parseParametersFromQuery(query, selectedTable);
 
-      if (sqlQuery.startsWith('select')) {
-        action = 'Read';
-        // Extract WHERE conditions, LIMIT, etc. from SQL if needed
-        // For now, we'll use a simple Read action
-      } else if (sqlQuery.startsWith('insert')) {
-        action = 'Create';
-        // Extract values from INSERT statement
-      } else if (sqlQuery.startsWith('update')) {
-        action = 'Update';
-        // Extract SET and WHERE clauses
-      } else if (sqlQuery.startsWith('delete')) {
-        action = 'Delete';
-        // Extract WHERE clause
+      // Simple action determination based on query type
+      if (queryStr.includes('read') || queryStr.includes('get') || queryStr.startsWith('select') || queryStr.includes('list')) {
+        action = 'List';
+      } else if (queryStr.includes('create') || queryStr.includes('insert') || queryStr.startsWith('insert')) {
+        action = 'create';
+      } else if (queryStr.includes('update') || queryStr.startsWith('update')) {
+        action = 'update';
+      } else if (queryStr.includes('delete') || queryStr.startsWith('delete')) {
+        action = 'delete';
       }
 
-      // Convert SQL query to SOAP request configuration
+      // Build ION API request configuration
       const config: SOAPRequestConfig = {
         tenant: selectedTenant.name,
-        table: selectedTable.endpoint,
+        table: selectedTable.endpoint, // Service name like 'ServiceCall_v2'
         action: action,
         parameters: parameters,
-        sqlQuery: query, // Pass the original SQL query for reference
-        fullUrl: selectedTenant.fullUrl // Use the full URL from the database configuration
+        sqlQuery: query, // Keep original query for reference
+        fullUrl: selectedTenant.fullUrl, // Use configured full URL if available
+        company: '' // Company code for ION API activation header (can be added later)
       };
 
-      console.log('Converting to SOAP request:', config);
-      console.log('Using full URL from database:', selectedTenant.fullUrl);
-      const result = await RemoteAPIManager.executeQuery(config);
-      setResults([result]);
+      // Call server-side API route for OAuth2 authentication and ION API execution
+      const response = await fetch('/api/remote-query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          config: config,
+          currentToken: currentToken
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || errorData.error || 'Failed to execute remote API query');
+      }
+
+      const data = await response.json();
+      
+      // Store the token for future use
+      if (data.token) {
+        setCurrentToken(data.token);
+      }
+      
+      setResults([data.result]);
 
     } catch (error) {
-      console.error('Error executing remote API query:', error);
       setError(error instanceof Error ? error.message : String(error));
     } finally {
       setIsExecuting(false);
@@ -186,14 +199,58 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
   };
 
   const selectTableAndQuery = (tenant: RemoteAPITenant, table: RemoteAPITable) => {
-    console.log('🔄 Selecting remote table and generating query:', table.name);
     setSelectedTenant(tenant);
     setSelectedTable(table);
 
-    // Generate a simple SQL SELECT statement for the user
-    const sqlQuery = `SELECT * FROM ${table.name} LIMIT 10;`;
-    setQuery(sqlQuery);
-    console.log('📝 Generated SQL query for:', table.name);
+    // Generate a simple API request for the user
+    const apiQuery = `Read data from ${table.name} service`;
+    setQuery(apiQuery);
+  };
+
+  /**
+   * Parse parameters from query and table configuration
+   * @private
+   * @param {string} query - The query string
+   * @param {RemoteAPITable} table - The selected table/service
+   * @returns {Record<string, any>} Parameters object
+   */
+  const parseParametersFromQuery = (query: string, table: RemoteAPITable): Record<string, any> => {
+    const parameters: Record<string, any> = {};
+
+    // Parse query for filter parameters (basic implementation)
+    const queryLower = query.toLowerCase();
+
+    // Extract filter conditions from query
+    if (queryLower.includes('where') || queryLower.includes('filter')) {
+      // Simple parameter extraction - can be enhanced
+      const filterMatch = queryLower.match(/where\s+(.+)/i);
+      if (filterMatch) {
+        parameters.filter = filterMatch[1].trim();
+      }
+    }
+
+    // Extract limit parameter
+    const limitMatch = queryLower.match(/limit\s+(\d+)/i);
+    if (limitMatch) {
+      parameters.limit = parseInt(limitMatch[1]);
+    }
+
+    // Extract service-specific parameters based on table type
+    if (table.endpoint.includes('ServiceCall')) {
+      parameters.serviceType = 'ServiceCall';
+      // Add default parameters for service calls
+    } else if (table.endpoint.includes('Customer')) {
+      parameters.entityType = 'Customer';
+      // Add default parameters for customer queries
+    } else if (table.endpoint.includes('Order')) {
+      parameters.entityType = 'Order';
+      // Add default parameters for order queries
+    }
+
+    // Add timestamp for all requests
+    parameters.timestamp = new Date().toISOString();
+
+    return parameters;
   };
 
   const updateTenant = async (id: string, data: Partial<RemoteAPITenant>) => {
@@ -279,7 +336,7 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
       if (newDatabase.isExisting) {
         console.log('ℹ️ Database already exists:', newDatabase.message);
         
-        // Convert to RemoteAPITenant format and add to state
+        // Convert to RemoteAPITenant format
         const existingTenant: RemoteAPITenant = {
           id: newDatabase.id,
           name: newDatabase.name || newDatabase.tenantName,
@@ -288,16 +345,23 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
           fullUrl: newDatabase.fullUrl
         };
 
-        // Check if this tenant is already in the list to avoid duplicates
+        // Update the tenant in the list with new tables if services were added
         setTenants(prev => {
-          const exists = prev.some(tenant => tenant.id === existingTenant.id);
-          if (!exists) {
-            return [existingTenant, ...prev];
-          }
-          return prev;
+          return prev.map(tenant => {
+            if (tenant.id === existingTenant.id) {
+              // Update existing tenant with new tables
+              return existingTenant;
+            }
+            return tenant;
+          });
         });
 
-        alert(newDatabase.message);
+        // Show appropriate message based on whether new services were added
+        const message = newDatabase.isUpdated 
+          ? `✅ ${newDatabase.message}` 
+          : `ℹ️ ${newDatabase.message}`;
+        alert(message);
+        
         return existingTenant;
       }
 

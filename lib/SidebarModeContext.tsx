@@ -2,7 +2,7 @@
  * @fileoverview Sidebar Mode Context Provider for Navigation Mode Management
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 'use client';

@@ -1,6 +1,6 @@
-# Midport SQL Query Platform
+# Midport ION API Query Platform
 
-A modern web application for querying remote API databases with SQL-like syntax, built with Next.js, React, and SQLite.
+A modern web application for **secure and seamless integration** with **Infor ION APIs** using **OAuth 2.0 authentication** and **SOAP XML** requests, providing a **simple SQL-like interface** that abstracts complex API technical details.
 
 ## 📋 Project Information
 
@@ -11,19 +11,25 @@ A modern web application for querying remote API databases with SQL-like syntax,
 
 ## 🚀 Features
 
-### Core Functionality
-- **Remote API Database Management**: Add, configure, and manage remote API connections
-- **SQL Query Interface**: Write SQL queries that are automatically converted to SOAP requests
-- **Real-time Query Execution**: Execute queries against remote APIs with live results
-- **Database Sidebar**: Navigate between local SQLite databases and remote API databases
-- **Table Management**: View and select tables from connected databases
+### **ION API Integration**
+- **Secure Authentication**: OAuth 2.0 integration with Infor ION API service accounts
+- **Multi-Tenant Support**: Manage multiple ION API tenants (e.g., MIDPORT_DEM, MIDPORT_PROD)
+- **SOAP XML Generation**: Automatic conversion of SQL queries to proper SOAP envelopes
+- **Service Management**: Support for ION API services like ServiceCall_v2, Customer_v1, Order_v1
+- **Real-time Query Execution**: Execute queries against remote ION APIs with live results
 
-### Technical Features
-- **SQLite Integration**: Local database for storing configuration and metadata
-- **SOAP API Support**: Automatic conversion of SQL queries to SOAP envelopes
+### **User Experience**
+- **Simple SQL Interface**: Write SQL queries without understanding ION API technical details
+- **Database Sidebar**: Navigate between local SQLite databases and remote ION API tenants
+- **Table/Service Selection**: View and select services from connected ION API tenants
 - **Responsive Design**: Mobile-friendly interface with modern UI components
-- **Error Handling**: Comprehensive error handling and user feedback
+
+### **Technical Architecture**
+- **Dual-Mode System**: Switch between local SQLite queries and remote ION API queries
+- **Local Configuration Storage**: SQLite database for storing ION API tenant configurations
+- **Error Handling**: Comprehensive error handling and user feedback for API failures
 - **Type Safety**: Full TypeScript implementation with strict typing
+- **Modular Design**: Clean separation between local and remote query execution
 
 ## 🏗️ Architecture
 
@@ -103,73 +109,98 @@ The application uses SQLite for local storage. The database file (`midport_query
 
 ## 📖 Usage Guide
 
-### Adding Remote API Databases
+### **ION API Integration Workflow**
 
-1. Click the **"Add New Remote Database"** button in the sidebar
-2. Fill in the required fields:
-   - **Database Name**: Friendly name for identification
-   - **Base URL**: API base URL (e.g., `https://mingle-ionapi.eu1.inforcloudsuite.com`)
-   - **Tenant**: Tenant name (e.g., `MIDPORT_DEM`)
-   - **Services Path**: Services path (e.g., `LN/c4ws/services`)
-   - **Tables**: Comma-separated table names
-3. Click **"Add Database"** to save
+#### **1. Add ION API Tenant**
+1. Click the **"Add New Remote Database"** button in the sidebar (switched to Remote API mode)
+2. Fill in the ION API configuration:
+   - **Database Name**: Friendly name for identification (e.g., "MIDPORT_DEM")
+   - **Base URL**: ION API base URL (e.g., `https://mingle-ionapi.eu1.inforcloudsuite.com`)
+   - **Tenant**: ION tenant name (e.g., `MIDPORT_DEM`)
+   - **Services Path**: ION services path (e.g., `LN/c4ws/services`)
+   - **Services**: Comma-separated ION service names (e.g., `ServiceCall_v2,Customer_v1,Order_v1`)
+3. The system will auto-construct the full ION API URL and save the configuration
 
-### Writing SQL Queries
-
-1. Select a database and table from the sidebar
-2. Write SQL queries in the query editor:
+#### **2. Execute ION API Queries**
+1. **Select Tenant**: Choose your ION API tenant from the sidebar
+2. **Select Service**: Pick a service (e.g., ServiceCall_v2) from the expanded tenant
+3. **Write SQL Query**: Use familiar SQL syntax in the query editor:
    ```sql
-   SELECT * FROM ServiceCall_v2 ;
+   SELECT * FROM ServiceCall_v2 WHERE status = 'active';
    ```
-3. Click **"Run Query"** to execute
+4. **Execute Query**: Click **"Run Query"** to execute
 
-### Supported SQL Operations
+#### **3. Query Processing**
+The platform automatically:
+- **Parses your SQL** to determine the SOAP action (Read, Create, Update, Delete)
+- **Extracts parameters** from WHERE clauses, LIMIT statements, etc.
+- **Generates SOAP XML** envelope with proper ION API formatting
+- **Authenticates** using OAuth 2.0 service account credentials
+- **Makes HTTP POST** request to the ION API endpoint
+- **Processes XML response** and displays results
 
-- **SELECT**: Read data from tables
-- **INSERT**: Create new records (planned)
-- **UPDATE**: Modify existing records (planned)
-- **DELETE**: Remove records (planned)
+### **Supported Operations**
+- **✅ SELECT/Read**: Query data from ION API services
+- **🔄 INSERT/Create**: Create new records (planned)
+- **🔄 UPDATE/Modify**: Update existing records (planned)
+- **🔄 DELETE/Remove**: Delete records (planned)
+
+### **ION API Endpoints**
+The platform integrates with ION API endpoints like:
+```
+https://mingle-ionapi.eu1.inforcloudsuite.com/MIDPORT_DEM/LN/c4ws/services/ServiceCall_v2
+https://mingle-ionapi.eu1.inforcloudsuite.com/MIDPORT_DEM/LN/c4ws/services/Customer_v1
+https://mingle-ionapi.eu1.inforcloudsuite.com/MIDPORT_DEM/LN/c4ws/services/Order_v1
+```
 
 ## 🔧 API Reference
 
-### Remote Database API
+### **ION API Integration APIs**
 
-#### `GET /api/remote-databases`
-Fetches all configured remote API databases.
+#### **Remote Database Management**
+
+##### `GET /api/remote-databases`
+Fetches all configured ION API tenant configurations.
 
 **Response:**
 ```json
 {
-  "databases": [
+  "tenants": [
     {
       "id": "1",
       "name": "MIDPORT_DEM",
       "tenantName": "MIDPORT_DEM",
       "baseUrl": "https://mingle-ionapi.eu1.inforcloudsuite.com",
       "services": "LN/c4ws/services",
+      "fullUrl": "https://mingle-ionapi.eu1.inforcloudsuite.com/MIDPORT_DEM/LN/c4ws/services",
+      "status": "active",
       "tables": [
         {
           "name": "ServiceCall_v2",
           "endpoint": "ServiceCall_v2"
+        },
+        {
+          "name": "Customer_v1",
+          "endpoint": "Customer_v1"
         }
-      ],
-      "status": "active"
+      ]
     }
   ]
 }
 ```
 
-#### `POST /api/remote-databases`
-Creates a new remote API database.
+##### `POST /api/remote-databases`
+Creates a new ION API tenant configuration.
 
 **Request Body:**
 ```json
 {
-  "name": "My Database",
-  "base_url": "https://api.example.com",
-  "tenant_name": "TENANT_1",
-  "services": "api/v1",
-  "tables": ["Table1", "Table2"]
+  "name": "MIDPORT_PROD",
+  "fullUrl": "https://mingle-ionapi.eu1.inforcloudsuite.com/MIDPORT_PROD/LN/c4ws/services",
+  "baseUrl": "https://mingle-ionapi.eu1.inforcloudsuite.com",
+  "tenantName": "MIDPORT_PROD",
+  "services": "LN/c4ws/services",
+  "tables": ["ServiceCall_v2", "Customer_v1", "Order_v1"]
 }
 ```
 
@@ -177,11 +208,57 @@ Creates a new remote API database.
 ```json
 {
   "success": true,
-  "database": { ... },
+  "tenant": {
+    "id": "2",
+    "name": "MIDPORT_PROD",
+    "tenantName": "MIDPORT_PROD",
+    "baseUrl": "https://mingle-ionapi.eu1.inforcloudsuite.com",
+    "services": "LN/c4ws/services",
+    "fullUrl": "https://mingle-ionapi.eu1.inforcloudsuite.com/MIDPORT_PROD/LN/c4ws/services",
+    "status": "active",
+    "tables": [...]
+  },
   "isExisting": false,
-  "message": "Database created successfully"
+  "message": "ION API tenant created successfully"
 }
 ```
+
+#### **Query Execution**
+
+##### `POST /api/sqlite/query` (Local SQLite queries)
+Executes SQL queries against local SQLite database.
+
+##### **ION API Query Processing**
+ION API queries are processed through the frontend using the 7-step pipeline:
+1. **Input Validation** - Ensures tenant and service selection
+2. **SQL Parsing** - Determines SOAP action from SQL keywords
+3. **Parameter Extraction** - Parses WHERE clauses and filters
+4. **SOAP Generation** - Creates proper ION API SOAP envelope
+5. **OAuth2 Authentication** - Service account token acquisition
+6. **API Communication** - HTTP POST to ION API endpoint
+7. **Response Processing** - XML response handling and display
+
+### **Authentication Requirements**
+
+#### **OAuth 2.0 Service Account Setup**
+The application requires ION API service account credentials via environment variables:
+
+```bash
+# ION API OAuth2 Configuration
+ION_CLIENT_ID=your_client_id
+ION_CLIENT_SECRET=your_client_secret
+ION_IDENTITY_URL=https://identity.infor.com
+ION_TENANT_ID=your_tenant_id
+ION_TOKEN_ENDPOINT=/oauth2/token
+ION_SERVICE_ACCOUNT_ACCESS_KEY=your_service_account_key
+ION_SERVICE_ACCOUNT_SECRET_KEY=your_service_account_secret
+```
+
+#### **Authentication Flow**
+1. **Token Acquisition**: Uses Resource Owner Password Grant with service account credentials
+2. **Token Storage**: Securely stores access tokens with expiration management
+3. **Request Authorization**: Applies Bearer token to ION API requests
+4. **Token Refresh**: Automatically handles token expiration and renewal
 
 ## 🗄️ Database Schema
 
@@ -221,6 +298,296 @@ CREATE TABLE remote_api_tables (
 4. **API Request**: SOAP request is sent to remote API
 5. **Response Processing**: Response is processed and displayed
 6. **Error Handling**: Errors are caught and displayed to user
+
+## 🔍 Remote Database Query Execution
+
+### **Complete Query Flow Analysis**
+
+#### **1. QueryEditor.tsx - Entry Point**
+```typescript
+// User clicks "Run Query" button in QueryEditor
+<Button onClick={onExecute}>
+  <Play className="w-4 h-4 mr-1 sm:mr-2" />
+  <span>Run Query</span>
+</Button>
+```
+
+The remote query execution **starts** from `QueryEditor.tsx` when the user clicks the "Run Query" button.
+
+#### **2. Parent Component Routing** (`app/page.tsx`)
+```typescript
+// Routes to appropriate context based on mode
+const executeQuery = mode === 'remote' ? remoteAPI.executeQuery : localDB.executeQuery;
+
+<QueryEditor
+  onExecute={executeQuery}  // Routes to RemoteAPIContext for remote mode
+  // ... other props
+/>
+```
+
+#### **3. RemoteAPIContext Processing** (`lib/RemoteAPIContext.tsx`)
+```typescript
+const executeQuery = async () => {
+  // 1. Validates tenant and table selection
+  if (!selectedTenant || !selectedTable) {
+    setError('Please select a tenant and table before running queries');
+    return;
+  }
+
+  // 2. Parses SQL query to determine SOAP action
+  const queryStr = query.trim().toLowerCase();
+  let action = 'read';
+  if (queryStr.includes('read') || queryStr.includes('get') || queryStr.startsWith('select')) {
+    action = 'read';
+  }
+
+  // 3. Builds ION API request configuration
+  const config: SOAPRequestConfig = {
+    tenant: selectedTenant.name,
+    table: selectedTable.endpoint,
+    action: action,
+    parameters: parameters,
+    sqlQuery: query,
+    fullUrl: selectedTenant.fullUrl
+  };
+
+  // 4. Calls RemoteAPIManager for actual API execution
+  const result = await RemoteAPIManager.executeQueryWithOAuth2(config, '', '', currentToken);
+  setResults([result]);
+};
+```
+
+#### **4. SOAP Request Generation** (`lib/RemoteAPIManager.ts`)
+
+**URL Construction:**
+```typescript
+static buildIONAPIUrl(tenant: string, service: string): string {
+  return `${this.BASE_URL}/${tenant}/LN/c4ws/services/${service}`;
+  // https://mingle-ionapi.eu1.inforcloudsuite.com/MIDPORT_DEM/LN/c4ws/services/ServiceCall_v2
+}
+```
+
+**SOAP Envelope Creation:**
+```typescript
+static generateSOAPEnvelope(action: string, parameters: Record<string, any> = {}): string {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <${action} xmlns="http://www.infor.com/ln/c4ws">
+      ${paramXml}
+    </${action}>
+  </soap:Body>
+</soap:Envelope>`;
+}
+```
+
+#### **5. OAuth2 Authentication** (`lib/OAuth2ConfigManager.ts`)
+
+**Service Account Authentication:**
+```typescript
+const formData = new URLSearchParams();
+formData.append('grant_type', 'password');
+formData.append('client_id', config.clientId);
+formData.append('client_secret', config.clientSecret);
+formData.append('saak', config.username); // Service Account Access Key
+formData.append('sask', config.password); // Service Account Secret Key
+```
+
+**Token Management:**
+- Loads credentials from environment variables (`ION_CLIENT_ID`, `ION_CLIENT_SECRET`, etc.)
+- Uses **Resource Owner Password Grant** with service account keys
+- Handles token acquisition, validation, and refresh
+
+#### **6. HTTP Request Execution**
+
+**Authenticated API Call:**
+```typescript
+const response = await fetch(url, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'text/xml; charset=utf-8',
+    'SOAPAction': `"${config.action}"`,
+    'Accept': 'text/xml',
+    'Authorization': OAuth2ConfigManager.getAuthorizationHeader(token),
+  },
+  body: soapEnvelope,
+});
+```
+
+#### **7. Response Processing**
+
+**XML Response Handling:**
+- Receives SOAP XML response from ION API
+- Currently returns raw XML data (development stage)
+- Future: Parse XML and convert to structured JSON format
+
+### **Query Execution Summary**
+
+| Step | Component/File | Action |
+|------|----------------|---------|
+| **1** | `QueryEditor.tsx` | User clicks "Run Query" → calls `onExecute()` |
+| **2** | `app/page.tsx` | Routes to `remoteAPI.executeQuery` (mode-based) |
+| **3** | `RemoteAPIContext.tsx` | Validates, parses SQL, builds SOAP config |
+| **4** | `RemoteAPIManager.ts` | Creates SOAP envelope, makes authenticated API call |
+| **5** | ION API | Processes SOAP request, returns XML response |
+| **6** | `QueryResults.tsx` | Displays results to user |
+
+### **Key Technical Components**
+
+| Component | Responsibility |
+|-----------|---------------|
+| **QueryEditor.tsx** | Entry point - captures user query input and triggers execution |
+| **RemoteAPIContext.tsx** | SQL parsing, SOAP config building, state management |
+| **RemoteAPIManager.ts** | SOAP envelope generation, HTTP request execution |
+| **OAuth2ConfigManager.ts** | Service account authentication, token management |
+| **ION API** | External SOAP API that processes requests and returns XML data |
+
+### **Query Processing Pipeline**
+
+1. **Input Validation** - Ensures tenant and table are selected
+2. **SQL Parsing** - Determines action type (read, create, update, delete)
+3. **Parameter Extraction** - Parses WHERE clauses, LIMIT, etc. from SQL
+4. **SOAP Generation** - Converts SQL to proper SOAP envelope format
+5. **Authentication** - Applies OAuth2 service account credentials
+6. **API Communication** - Makes HTTP POST request to ION API endpoint
+7. **Response Handling** - Processes XML response for user display
+
+## 🚀 7-Step Complete Query Execution Pipeline
+
+### **Step 1: Input Validation** 🛡️
+```typescript
+// In RemoteAPIContext.tsx
+if (!selectedTenant || !selectedTable) {
+  setError('Please select a tenant and table before running queries');
+  return;
+}
+```
+- **Purpose**: Ensures user has selected both a tenant and table before proceeding
+- **Validation**: Checks for non-null tenant and table objects
+- **Error Handling**: Provides clear user feedback for missing selections
+
+### **Step 2: SQL Query Parsing** 🔍
+```typescript
+// Parse SQL to determine SOAP action
+const queryStr = query.trim().toLowerCase();
+let action = 'read';
+
+if (queryStr.includes('read') || queryStr.includes('get') || queryStr.startsWith('select')) {
+  action = 'read';
+} else if (queryStr.includes('create') || queryStr.includes('insert')) {
+  action = 'create';
+}
+// ... additional parsing logic
+```
+- **Purpose**: Analyzes SQL query to determine the appropriate SOAP action
+- **Keywords**: Maps SQL operations (SELECT, INSERT, UPDATE, DELETE) to SOAP actions
+- **Action Types**: Determines CRUD operation type for API call
+
+### **Step 3: Parameter Extraction** 📋
+```typescript
+// Extract parameters from SQL query
+const parameters = parseParametersFromQuery(query, selectedTable);
+// Extracts WHERE clauses, LIMIT statements, etc.
+```
+- **Purpose**: Parses SQL query for filter conditions and parameters
+- **WHERE Clauses**: Extracts filter conditions from SQL
+- **LIMIT/OFFSET**: Handles pagination parameters
+- **Service-Specific**: Adds default parameters based on service type
+
+### **Step 4: SOAP Envelope Generation** 📨
+```typescript
+// In RemoteAPIManager.ts
+static generateSOAPEnvelope(action: string, parameters: Record<string, any> = {}): string {
+  const paramXml = Object.entries(parameters)
+    .map(([key, value]) => `<${key}>${value}</${key}>`)
+    .join('');
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <${action} xmlns="http://www.infor.com/ln/c4ws">
+      ${paramXml}
+    </${action}>
+  </soap:Body>
+</soap:Envelope>`;
+}
+```
+- **Purpose**: Converts parsed SQL into proper SOAP XML envelope
+- **XML Structure**: Creates valid SOAP 1.1 envelope format
+- **Parameters**: Embeds extracted parameters as XML elements
+
+### **Step 5: OAuth2 Authentication** 🔐
+```typescript
+// In OAuth2ConfigManager.ts
+const formData = new URLSearchParams();
+formData.append('grant_type', 'password');
+formData.append('client_id', config.clientId);
+formData.append('client_secret', config.clientSecret);
+formData.append('saak', config.username); // Service Account Access Key
+formData.append('sask', config.password); // Service Account Secret Key
+
+const response = await fetch(config.tokenEndpoint, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: formData.toString(),
+});
+```
+- **Purpose**: Authenticates with ION API using service account credentials
+- **Grant Type**: Uses Resource Owner Password Grant flow
+- **Token Storage**: Manages access tokens with expiration handling
+
+### **Step 6: API Communication** 🌐
+```typescript
+// In RemoteAPIManager.ts
+const response = await fetch(url, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'text/xml; charset=utf-8',
+    'SOAPAction': `"${config.action}"`,
+    'Accept': 'text/xml',
+    'Authorization': OAuth2ConfigManager.getAuthorizationHeader(token),
+  },
+  body: soapEnvelope,
+});
+
+if (!response.ok) {
+  throw new Error(`ION API Error ${response.status}: ${response.statusText}`);
+}
+```
+- **Purpose**: Makes authenticated HTTP POST request to ION API
+- **Protocol**: SOAP XML over HTTP POST
+- **Headers**: Includes OAuth2 authorization and proper content types
+- **Error Handling**: Comprehensive HTTP error management
+
+### **Step 7: Response Processing** 📦
+```typescript
+// Process XML response
+const responseText = await response.text();
+console.log('✅ ION API request successful');
+
+return {
+  success: true,
+  url: url,
+  action: config.action,
+  status: response.status,
+  statusText: response.statusText,
+  data: responseText, // Currently returns raw XML
+  note: 'ION API SOAP response received successfully'
+};
+```
+- **Purpose**: Handles API response and prepares data for UI display
+- **Current State**: Returns raw SOAP XML (development stage)
+- **Future Enhancement**: Will parse XML and convert to structured JSON
+- **Error Handling**: Manages API failures and network issues
+
+---
+
+### **Pipeline Benefits**
+✅ **Modular Design** - Each step can be independently modified or enhanced
+✅ **Error Isolation** - Failures in one step don't affect others
+✅ **Debugging Support** - Clear separation of concerns for troubleshooting
+✅ **Extensibility** - Easy to add new features at any pipeline stage
+✅ **Type Safety** - Full TypeScript coverage throughout the pipeline
 
 ## 🧪 Testing
 

@@ -2,7 +2,7 @@
  * @fileoverview Database Context Provider for Local Database Management
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 202
  */
 
 'use client';
@@ -80,10 +80,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
 
   const loadDatabases = async () => {
     try {
-      console.log('Starting loadDatabases...');
-
       // Load virtual databases from SQLite storage
-      console.log('🔄 Loading virtual databases from SQLite...');
 
       const response = await fetch('/api/databases');
       if (!response.ok) {
@@ -91,11 +88,9 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       }
 
       let dbList: DatabaseData[] = await response.json();
-      console.log('✅ Loaded virtual databases:', dbList.length);
 
       // If no databases exist, initialize with default SQLite database
       if (dbList.length === 0) {
-        console.log('🔄 No databases found, initializing with default SQLite database...');
 
         const initResponse = await fetch('/api/databases/clear', {
           method: 'POST',
@@ -106,9 +101,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
 
         if (initResponse.ok) {
           dbList = await initResponse.json();
-          console.log('✅ Initialized with default databases:', dbList.length);
         } else {
-          console.warn('⚠️ Database initialization failed:', initResponse.status);
           // Fallback to static SQLite database
           dbList = [
             {
@@ -126,26 +119,18 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      console.log('📊 Final database list:', dbList);
-      console.log('📈 Number of databases:', dbList.length);
-
-      console.log('✅ Setting databases state...');
       setDatabases(dbList);
 
       // Auto-select first database
       if (dbList.length > 0) {
-        console.log('🎯 Auto-selecting first database:', dbList[0].name);
         setSelectedDatabase(dbList[0]);
 
         if (dbList[0].tables && dbList[0].tables.length > 0) {
-          console.log('🎯 Auto-selecting first table:', dbList[0].tables[0].name);
           setSelectedTable(dbList[0].tables[0]);
         }
       }
 
-      console.log('✅ Database loading completed successfully!');
     } catch (error) {
-      console.error('❌ Error loading databases:', error);
       setError('Failed to load databases');
     }
   };
@@ -158,10 +143,6 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     setResults([]);
 
     try {
-      console.log('Executing query:', query);
-      console.log('Selected database:', selectedDatabase?.name);
-      console.log('Selected table:', selectedTable?.name);
-
       // Validate database selection
       if (!selectedDatabase) {
         throw new Error('Please select a database before running queries');
@@ -169,7 +150,6 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
 
       // Handle different database types
       if (selectedDatabase.type === 'sqlite') {
-        console.log('Executing SQL query against SQLite database');
 
         // Execute query via API
         const apiResponse = await fetch('/api/sqlite/query', {
@@ -185,7 +165,6 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
         }
 
         const result = await apiResponse.json();
-        console.log('Query executed successfully, results:', result);
 
         if (result.success) {
           setResults(result.data);
@@ -194,7 +173,6 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
         }
       } else {
         // For other database types, show connection info
-        console.log(`Database type "${selectedDatabase.type}" selected but not implemented`);
 
         if (selectedDatabase.type === 'api') {
           setResults([{

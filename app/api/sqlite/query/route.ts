@@ -9,8 +9,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
-    await SQLiteManager.initialize();
-
     // Determine query type (SELECT vs other operations)
     const queryUpper = query.trim().toUpperCase();
 

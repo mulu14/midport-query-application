@@ -2,7 +2,7 @@
  * @fileoverview SQLite database manager for Midport SQL Query Platform
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import path from "path";
@@ -66,17 +66,14 @@ export class SQLiteManager {
     }
 
     const dbPath = path.join(process.cwd(), "midport_query_platform.db");
-    console.log('🔌 SQLiteManager: Connecting to local SQLite database...');
 
     this.db = new sqlite3.Database(
       dbPath,
       sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
       (err) => {
         if (err) {
-          console.error('❌ SQLiteManager: Connection error:', err.message);
           throw err;
         }
-        console.log("✅ SQLiteManager: Connected to local SQLite database");
       }
     );
 
@@ -96,7 +93,6 @@ export class SQLiteManager {
 
       this.db.all(query, params, (err: Error, rows: any[]) => {
         if (err) {
-          console.error('SQLiteManager: apiGet error:', err);
           reject(err);
           return;
         }
@@ -114,7 +110,6 @@ export class SQLiteManager {
 
       this.db.run(query, params, function(err: Error) {
         if (err) {
-          console.error('SQLiteManager: apiPost error:', err);
           reject(err);
           return;
         }
@@ -132,7 +127,6 @@ export class SQLiteManager {
 
       this.db.exec(query, (err: Error | null) => {
         if (err) {
-          console.error('SQLiteManager: apiExec error:', err);
           reject(err);
           return;
         }
@@ -150,8 +144,6 @@ export class SQLiteManager {
    * @throws {Error} If migration fails
    */
   private static async runMigrations(): Promise<void> {
-    console.log('🏗️ SQLiteManager: Running migrations...');
-
     try {
       // Create databases table
       await this.apiExec(`
@@ -200,7 +192,6 @@ export class SQLiteManager {
         const idColumn = columns.find((col: any) => col.name === 'id');
 
         if (idColumn && idColumn.type === 'TEXT') {
-          console.log('🔄 Migrating TEXT id column to INTEGER...');
 
           // Create new table with correct schema
           await this.apiExec(`
@@ -228,10 +219,9 @@ export class SQLiteManager {
           await this.apiExec(`DROP TABLE remote_api_databases`);
           await this.apiExec(`ALTER TABLE remote_api_databases_new RENAME TO remote_api_databases`);
 
-          console.log('✅ Migrated id column from TEXT to INTEGER');
         }
       } catch (migrationError) {
-        console.log('ℹ️ Migration issue (likely already migrated):', migrationError instanceof Error ? migrationError.message : String(migrationError));
+        // Migration likely already completed
       }
 
       // Migration for existing tables - check if columns exist and add if needed
@@ -242,21 +232,15 @@ export class SQLiteManager {
         const hasFullUrlColumn = columns.some((col: any) => col.name === 'full_url');
         if (!hasFullUrlColumn) {
           await this.apiExec(`ALTER TABLE remote_api_databases ADD COLUMN full_url TEXT`);
-          console.log('✅ Added full_url column to existing table');
-        } else {
-          console.log('ℹ️ full_url column already exists');
         }
 
         // Add name column if it doesn't exist (migration)
         const hasNameColumn = columns.some((col: any) => col.name === 'name');
         if (!hasNameColumn) {
           await this.apiExec(`ALTER TABLE remote_api_databases ADD COLUMN name TEXT NOT NULL DEFAULT 'Unknown'`);
-          console.log('✅ Added name column to existing table');
-        } else {
-          console.log('ℹ️ name column already exists');
         }
       } catch (error) {
-        console.log('ℹ️ Migration error (likely table is new):', error instanceof Error ? error.message : String(error));
+        // Migration error (likely table is new)
       }
 
       // Create remote API tables table
@@ -327,21 +311,16 @@ export class SQLiteManager {
       // Seed sample data
       await this.seedSampleData();
 
-      console.log('✅ SQLiteManager: Migrations completed successfully');
     } catch (error) {
-      console.error('❌ SQLiteManager: Error running migrations:', error);
       throw error;
     }
   }
 
   private static async seedSampleData(): Promise<void> {
-    console.log('🌱 SQLiteManager: Seeding sample data...');
-
     try {
       // Check if data already exists
       const existingCustomers = await this.apiGet('SELECT COUNT(*) as count FROM customers');
       if (existingCustomers[0].count > 0) {
-        console.log('✅ SQLiteManager: Sample data already exists, skipping seed');
         return;
       }
 
@@ -393,9 +372,7 @@ export class SQLiteManager {
         );
       }
 
-      console.log('✅ SQLiteManager: Sample data seeded successfully');
     } catch (error) {
-      console.error('❌ SQLiteManager: Error seeding sample data:', error);
       throw error;
     }
   }
@@ -418,7 +395,6 @@ export class SQLiteManager {
    * @throws {Error} If database operation fails
    */
   static async createRemoteAPIDatabase(data: { name?: string; fullUrl: string; baseUrl: string; tenantName: string; services: string; tables: string[] }): Promise<any> {
-    console.log('🔄 SQLiteManager: createRemoteAPIDatabase called with:', data);
     await this.initialize();
 
     // Check if tenant already exists (tenant_name UNIQUE constraint will handle this)
@@ -428,22 +404,43 @@ export class SQLiteManager {
     );
 
     if (existingTenant.length > 0) {
-      // Database already exists - return existing database with a message
+      // Tenant already exists - add new services/tables to existing tenant
       const tenantId = existingTenant[0].id;
-      console.log('ℹ️ Database already exists:', data.tenantName);
       
-      const existingDatabase = await this.getRemoteAPIDatabaseById(tenantId);
+      // Get current tables for this tenant
+      const currentTables = await this.apiGet(
+        'SELECT name FROM remote_api_tables WHERE database_id = ?',
+        [tenantId]
+      );
+      const currentTableNames = currentTables.map((table: any) => table.name);
       
-      // Add a flag to indicate this is an existing database
+      // Filter out tables that already exist
+      const newTables = data.tables.filter(table => !currentTableNames.includes(table));
+      
+      if (newTables.length > 0) {
+        // Insert only new tables
+        for (const table of newTables) {
+          await this.apiPost(
+            'INSERT INTO remote_api_tables (database_id, name) VALUES (?, ?)',
+            [tenantId, table]
+          );
+        }
+      }
+      
+      const updatedDatabase = await this.getRemoteAPIDatabaseById(tenantId.toString());
+      
+      // Add a flag to indicate this is an updated existing database
       return {
-        ...existingDatabase,
+        ...updatedDatabase,
         isExisting: true,
-        message: `Database "${data.tenantName}" already exists`
+        isUpdated: newTables.length > 0,
+        newTablesAdded: newTables,
+        message: newTables.length > 0 
+          ? `Added ${newTables.length} new service(s) to tenant "${data.tenantName}": ${newTables.join(', ')}`
+          : `All services already exist in tenant "${data.tenantName}"`
       };
     } else {
       // Create new tenant
-      console.log('🆕 Creating new tenant:', data.tenantName);
-
       try {
         const result = await this.apiPost(
           'INSERT INTO remote_api_databases (name, base_url, tenant_name, services, full_url) VALUES (?, ?, ?, ?, ?)',
@@ -459,18 +456,16 @@ export class SQLiteManager {
               'INSERT INTO remote_api_tables (database_id, name) VALUES (?, ?)',
               [tenantId, table]
             );
-            console.log('✅ Added table:', table, 'to tenant:', data.tenantName);
           }
         }
 
-        const newDatabase = await this.getRemoteAPIDatabaseById(tenantId);
+        const newDatabase = await this.getRemoteAPIDatabaseById(tenantId.toString());
         return {
           ...newDatabase,
           isExisting: false,
-          message: `Database "${data.tenantName}" created successfully`
+          message: `Database "${data.tenantName}" created successfully with ${data.tables.length} service(s)`
         };
       } catch (error) {
-        console.error('❌ SQLiteManager: Error creating new tenant:', error);
         throw error;
       }
     }
@@ -558,7 +553,6 @@ export class SQLiteManager {
   }
 
   static async createDatabase(data: DatabaseData): Promise<DatabaseData> {
-    console.log('🔄 SQLiteManager: Creating database:', data.name);
     await this.initialize();
 
     let status: number;
@@ -568,20 +562,15 @@ export class SQLiteManager {
       // Check if database with same name already exists
       const existingDb = await this.findDatabaseByName(data.name);
       if (existingDb) {
-        console.log('Database already exists:', data.name, '- returning existing');
         return existingDb;
       }
 
       const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const now = new Date().toISOString();
-      console.log('📝 SQLiteManager: Generated ID:', id);
-
-      console.log('💾 SQLiteManager: Inserting database record...');
       const query = 'INSERT INTO databases (id, name, type, connection_string, api_key, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
       const values = [id, data.name, data.type, data.connection_string || null, data.api_key || null, data.status || 'connected', now, now];
 
       await this.apiPost(query, values);
-      console.log('✅ SQLiteManager: Database record inserted successfully');
 
       // Insert tables if provided
       if (data.tables && data.tables.length > 0) {
@@ -592,7 +581,6 @@ export class SQLiteManager {
         }
       }
 
-      console.log('Database created in SQLiteCloud:', data.name);
       const result = await this.findDatabaseById(id);
       if (!result) {
         throw new Error('Failed to retrieve created database');
@@ -600,13 +588,11 @@ export class SQLiteManager {
       return result;
 
     } catch (error) {
-      console.error('❌ SQLiteManager: Error creating database:', error);
       throw error;
     }
   }
 
   static async listDatabases(): Promise<DatabaseData[]> {
-    console.log('🔍 SQLiteManager: Listing databases...');
     await this.initialize();
 
     try {
@@ -625,8 +611,6 @@ export class SQLiteManager {
         updated_at: string;
       }>;
 
-      console.log('📋 SQLiteManager: Found', databases.length, 'database records');
-
       const result: DatabaseData[] = [];
       for (const dbInfo of databases) {
         const tables = await this.apiGet(
@@ -636,8 +620,6 @@ export class SQLiteManager {
           name: string;
           record_count: number;
         }>;
-
-        console.log(`📋 SQLiteManager: Database ${dbInfo.name} has ${tables.length} tables`);
 
         result.push({
           id: dbInfo.id,
@@ -652,17 +634,14 @@ export class SQLiteManager {
         });
       }
 
-      console.log(`SQLiteCloud database list() returned ${result.length} databases`);
       return result;
 
     } catch (error) {
-      console.error('❌ SQLiteManager: Error listing databases:', error);
       throw error;
     }
   }
 
   static async findDatabaseById(id: string): Promise<DatabaseData | null> {
-    console.log('🔍 SQLiteManager: Finding database by ID:', id);
     await this.initialize();
 
     try {
@@ -681,7 +660,6 @@ export class SQLiteManager {
       }>;
 
       if (!databases || databases.length === 0) {
-        console.log('❌ SQLiteManager: Database not found by ID:', id);
         return null;
       }
 
@@ -696,8 +674,6 @@ export class SQLiteManager {
         record_count: number;
       }>;
 
-      console.log(`📋 SQLiteManager: Found database ${database.name} with ${tables.length} tables`);
-
       return {
         id: database.id,
         name: database.name,
@@ -711,13 +687,11 @@ export class SQLiteManager {
       };
 
     } catch (error) {
-      console.error('❌ SQLiteManager: Error finding database by ID:', error);
       throw error;
     }
   }
 
   static async findDatabaseByName(name: string): Promise<DatabaseData | null> {
-    console.log('🔍 SQLiteManager: Finding database by name:', name);
     await this.initialize();
 
     try {
@@ -736,7 +710,6 @@ export class SQLiteManager {
       }>;
 
       if (!databases || databases.length === 0) {
-        console.log('❌ SQLiteManager: Database not found by name:', name);
         return null;
       }
 
@@ -751,8 +724,6 @@ export class SQLiteManager {
         record_count: number;
       }>;
 
-      console.log(`📋 SQLiteManager: Found database ${database.name} with ${tables.length} tables`);
-
       return {
         id: database.id,
         name: database.name,
@@ -766,13 +737,11 @@ export class SQLiteManager {
       };
 
     } catch (error) {
-      console.error('❌ SQLiteManager: Error finding database by name:', error);
       throw error;
     }
   }
 
   static async updateDatabase(id: string, data: Partial<DatabaseData>): Promise<DatabaseData | null> {
-    console.log('🔄 SQLiteManager: Updating database:', id);
     await this.initialize();
 
     try {
@@ -795,15 +764,11 @@ export class SQLiteManager {
       values.push(id);
 
       const updateQuery = `UPDATE databases SET ${updateFields.join(', ')} WHERE id = ?`;
-      console.log('💾 SQLiteManager: Executing update query:', updateQuery);
 
       const result = await this.apiPost(updateQuery, values);
 
-      console.log('✅ SQLiteManager: Database updated successfully');
-
       // Update tables if provided
       if (data.tables) {
-        console.log('🔄 SQLiteManager: Updating tables...');
 
         // Delete existing tables
         await this.apiPost('DELETE FROM database_tables WHERE database_id = ?', [id]);
@@ -819,43 +784,34 @@ export class SQLiteManager {
         }
       }
 
-      console.log('Database updated in SQLiteCloud:', id);
       return this.findDatabaseById(id);
 
     } catch (error) {
-      console.error('❌ SQLiteManager: Error updating database:', error);
       throw error;
     }
   }
 
   static async deleteDatabase(id: string): Promise<boolean> {
-    console.log('🗑️ SQLiteManager: Deleting database:', id);
     await this.initialize();
 
     try {
       const result = await this.apiPost('DELETE FROM databases WHERE id = ?', [id]);
 
-      console.log('Database deleted from SQLiteCloud:', id);
       return true;
 
     } catch (error) {
-      console.error('❌ SQLiteManager: Error deleting database:', error);
       throw error;
     }
   }
 
   static async clearAllDatabases(): Promise<void> {
-    console.log('🧹 SQLiteManager: Clearing all databases...');
     await this.initialize();
 
     try {
       // Clear tables (foreign key constraint will handle cascading)
       await this.apiExec('DELETE FROM databases');
 
-      console.log('✅ SQLiteManager: All databases cleared from SQLiteCloud');
-
     } catch (error) {
-      console.error('❌ SQLiteManager: Error clearing databases:', error);
       throw error;
     }
   }
@@ -864,11 +820,6 @@ export class SQLiteManager {
     return await new Promise((resolve) => {
       if (this.db) {
         this.db.close((err) => {
-          if (err) {
-            console.error('❌ SQLiteManager: Error closing database:', err);
-          } else {
-            console.log('✅ SQLiteManager: Database connection closed');
-          }
           this.db = null;
           resolve();
         });

@@ -2,13 +2,15 @@
  * @fileoverview Query Results Component for Displaying Database Query Results
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import React from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import IONAPIResultsDisplay from './IONAPIResultsDisplay';
+import { useSidebarMode } from '@/lib/SidebarModeContext';
 
 /**
  * Props interface for QueryResults component
@@ -32,12 +34,16 @@ interface QueryResultsProps {
  * @returns {JSX.Element} Results display with loading, error, or data table
  */
 export default function QueryResults({ results, error, isExecuting }: QueryResultsProps) {
+  const { mode } = useSidebarMode();
+  
   if (isExecuting) {
     return (
       <div className="bg-[#2a6b83] border border-[#1a5f7a] rounded-lg shadow-lg p-8 backdrop-blur-sm">
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
-          <span className="ml-3 text-white">Executing query...</span>
+          <span className="ml-3 text-white">
+            {mode === 'remote' ? 'Executing ION API query...' : 'Executing query...'}
+          </span>
         </div>
       </div>
     );
@@ -64,6 +70,27 @@ export default function QueryResults({ results, error, isExecuting }: QueryResul
           <p>No results to display. Run a query to see results.</p>
         </div>
       </div>
+    );
+  }
+  
+  // Check if this is an ION API result (remote mode with structured result data)
+  const isIONAPIResult = mode === 'remote' && 
+    results.length > 0 && 
+    results[0] && 
+    typeof results[0] === 'object' && 
+    ('url' in results[0] || 'action' in results[0] || 'data' in results[0]);
+    
+  if (isIONAPIResult) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-4"
+      >
+        {results.map((result, index) => (
+          <IONAPIResultsDisplay key={index} result={result} />
+        ))}
+      </motion.div>
     );
   }
 

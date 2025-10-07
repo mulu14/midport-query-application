@@ -2,7 +2,7 @@
  * @fileoverview API routes for local database management
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import { NextRequest, NextResponse } from 'next/server';

@@ -2,7 +2,7 @@
  * @fileoverview SQL Query Editor Component for Database Query Interface
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import React from 'react';

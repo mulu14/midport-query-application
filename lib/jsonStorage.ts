@@ -2,7 +2,7 @@
  * @fileoverview JSON Storage Manager for Database Configuration Persistence
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import fs from 'fs';

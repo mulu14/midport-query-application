@@ -2,11 +2,14 @@
  * @fileoverview API routes for remote database management
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { SQLiteManager } from '@/lib/sqlite';
+import { RemoteAPIManager } from '@/lib/RemoteAPIManager';
+import { OAuth2ConfigManager } from '@/lib/OAuth2ConfigManager';
+import type { SOAPRequestConfig, StoredOAuth2Token } from '@/Entities/RemoteAPI';
 
 /**
  * GET endpoint to fetch all remote API databases
@@ -65,11 +68,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(database);
   } catch (error) {
     console.error('❌ API: Error creating remote API database in SQLite:', error);
-    console.error('❌ API: Error details:', error.message);
-    console.error('❌ API: Error stack:', error.stack);
+    console.error('❌ API: Error details:', error instanceof Error ? error.message : String(error));
+    console.error('❌ API: Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
-      { error: 'Failed to create remote API database', details: error.message },
+      { error: 'Failed to create remote API database', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
 }
+

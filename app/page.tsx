@@ -2,7 +2,7 @@
  * @fileoverview Main Query Platform Page Component
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 'use client';

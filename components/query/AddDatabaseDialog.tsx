@@ -2,7 +2,7 @@
  * @fileoverview Add Database Dialog Component for Remote API Database Configuration
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
- * @date December 2024
+ * @date October 2025
  */
 
 import React, { useState } from 'react';
@@ -328,7 +328,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
                     required
                     className="bg-[#0f3d4f] border-[#1a5f7a] text-white placeholder:text-[#8bb3cc] focus:ring-2 focus:ring-blue-500 text-sm sm:text-base h-10 sm:h-11"
                   />
-                  <p className="text-xs text-[#8bb3cc]">Comma-separated table names. Each tenant can have different base URLs and multiple tables</p>
+                  <p className="text-xs text-[#8bb3cc]">Comma-separated service names (e.g., BusinessPartner_v3,ATPService_WT,SalesOrder). If tenant exists, new services will be added to it.</p>
                 </div>
               </div>
 
