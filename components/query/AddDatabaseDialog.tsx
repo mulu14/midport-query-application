@@ -53,11 +53,8 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
   const { createDatabase } = useDatabase();
   const { createRemoteAPIDatabase } = useRemoteAPI();
 
-  console.log('🔍 AddDatabaseDialog: Current mode:', mode);
-
   // Reset form when dialog opens or mode changes
   React.useEffect(() => {
-    console.log('🔄 AddDatabaseDialog: useEffect triggered, open:', open, 'mode:', mode);
     if (open) {
       setFormData({
         name: '',
@@ -114,11 +111,8 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
     // Parse URL like: https://mingle-ionapi.eu1.inforcloudsuite.com/MIDPORT_DEM/LN/c4ws/services/ServiceCall_v2
     // or: https://different-api.com/COBHAM/LN/c4ws/services/ServiceCall_v2
     try {
-      console.log('🔍 Parsing API URL:', url);
       const urlObj = new URL(url);
       const pathParts = urlObj.pathname.split('/').filter(p => p);
-
-      console.log('📋 URL path parts:', pathParts);
 
       if (pathParts.length >= 3) {
         const base_url = `${urlObj.protocol}//${urlObj.host}/`;
@@ -133,24 +127,19 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
           table
         };
 
-        console.log('✅ Parsed API URL:', result);
         return result;
       } else {
-        console.warn('⚠️ URL does not have enough path parts for parsing');
       }
     } catch (error) {
-      console.error('❌ Invalid URL format:', error);
+      // Invalid URL format - silently fail
     }
     return null;
   };
 
   const handleUrlChange = (url: string) => {
-    console.log('🔄 handleUrlChange called with URL:', url, 'mode:', mode);
-
     if (mode === 'remote') {
       const parsed = parseAPIUrl(url);
       if (parsed) {
-        console.log('📝 Setting form data with parsed values');
         setFormData(prev => ({
           ...prev,
           full_url: url,
@@ -161,12 +150,10 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
           name: `${parsed.tenant_name} - ${parsed.table}`
         }));
       } else {
-        console.log('📝 Parsing failed, just setting URL');
         // If parsing fails, just set the URL
         setFormData(prev => ({ ...prev, full_url: url }));
       }
     } else {
-      console.log('📝 Non-remote mode, just setting URL');
       setFormData(prev => ({ ...prev, full_url: url }));
     }
   };
@@ -211,7 +198,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
           onSuccess();
           onClose();
         }
-        // If result is null, it means database already exists and user was notified
+        // If result is null, database already exists
       } else {
         // Create local database
         const sampleTables = (formData.type === 'local' || formData.type === 'sqlite')
@@ -250,7 +237,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
         onClose();
       }
     } catch (error) {
-      console.error('Error adding database:', error);
+      // Handle error silently - user will see feedback in UI
     } finally {
       setIsSaving(false);
     }
@@ -266,9 +253,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4 px-4 sm:px-6">
-          {(() => {
-            console.log('🎨 AddDatabaseDialog: Rendering form, mode:', mode, 'type:', formData.type);
-            return (mode === 'remote' || formData.type === 'api') ? (
+          {(mode === 'remote' || formData.type === 'api') ? (
               // Remote API Database Form
               <>
               <div className="space-y-2">
@@ -454,8 +439,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
                 </div>
               )}
             </>
-            );
-          })()}
+          )}
 
           <DialogFooter className="bg-[#1a5f7a] px-4 sm:px-6 py-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 mt-4">
             <Button type="button" variant="outline" onClick={onClose} className="border-[#1a5f7a] text-white hover:bg-[#2a6b83] hover:text-white bg-transparent text-sm sm:text-base px-3 sm:px-4 py-2">

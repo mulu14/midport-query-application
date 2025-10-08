@@ -10,20 +10,46 @@ import { SQLiteManager } from '@/lib/sqlite';
 
 /**
  * GET endpoint to fetch all local databases
- * Retrieves all configured local databases from SQLite
+ * 
+ * @description
+ * Retrieves all configured local database connections from SQLite storage.
+ * Returns database configurations with their associated tables and metadata.
+ * 
  * @async
  * @function GET
- * @returns {Promise<NextResponse>} JSON response with databases array
- * @throws {NextResponse} 500 error if database fetch fails
+ * @returns {Promise<NextResponse>} JSON response containing:
+ * @returns {DatabaseData[]} - Array of database configuration objects
+ * @returns {string} return[].id - Unique database identifier
+ * @returns {string} return[].name - Database display name
+ * @returns {string} return[].type - Database type (postgresql, mysql, mongodb, etc.)
+ * @returns {string} [return[].connection_string] - Database connection string
+ * @returns {string} [return[].api_key] - API authentication key
+ * @returns {string} return[].status - Connection status (connected, disconnected, error)
+ * @returns {DatabaseTable[]} return[].tables - Array of table metadata
+ * @returns {string} return[].created_at - Creation timestamp
+ * @returns {string} return[].updated_at - Last update timestamp
+ * 
+ * @throws {NextResponse} 500 Internal Server Error - Database query failed
+ * 
+ * @example
+ * ```typescript
+ * // Response format
+ * [
+ *   {
+ *     "id": "123-abc",
+ *     "name": "Production DB",
+ *     "type": "postgresql",
+ *     "status": "connected",
+ *     "tables": [{"name": "users", "record_count": 150}]
+ *   }
+ * ]
+ * ```
  */
 export async function GET() {
   try {
-    console.log('🔍 API: Fetching databases from SQLite...');
     const databases = await SQLiteManager.listDatabases();
-    console.log('📋 API: Returning databases from SQLite:', databases.length);
     return NextResponse.json(databases);
   } catch (error) {
-    console.error('❌ API: Error fetching databases from SQLite:', error);
     return NextResponse.json(
       { error: 'Failed to fetch databases' },
       { status: 500 }
@@ -32,25 +58,53 @@ export async function GET() {
 }
 
 /**
- * POST endpoint to create a new local database
- * Creates a new local database configuration in SQLite
+ * POST endpoint to create a new local database configuration
+ * 
+ * @description
+ * Creates a new local database configuration entry in SQLite storage.
+ * If a database with the same name exists, returns the existing configuration.
+ * 
  * @async
  * @function POST
- * @param {NextRequest} request - The incoming request with database configuration
- * @returns {Promise<NextResponse>} JSON response with created database
- * @throws {NextResponse} 500 error if database creation fails
+ * @param {NextRequest} request - The incoming HTTP request
+ * 
+ * @param {Object} request.body - Request body containing:
+ * @param {string} request.body.name - Database display name (must be unique)
+ * @param {'postgresql'|'mysql'|'mongodb'|'api'|'local'|'sqlitecloud'} request.body.type - Database type
+ * @param {string} [request.body.connection_string] - Database connection string
+ * @param {string} [request.body.api_key] - API authentication key
+ * @param {DatabaseTable[]} [request.body.tables] - Array of table definitions
+ * @param {'connected'|'disconnected'|'error'} [request.body.status='connected'] - Initial status
+ * 
+ * @returns {Promise<NextResponse>} JSON response containing:
+ * @returns {DatabaseData} - Created database configuration object
+ * @returns {string} return.id - Generated unique identifier
+ * @returns {string} return.name - Database display name
+ * @returns {string} return.type - Database type
+ * @returns {string} return.status - Connection status
+ * @returns {DatabaseTable[]} return.tables - Associated tables
+ * @returns {string} return.created_at - Creation timestamp
+ * @returns {string} return.updated_at - Last update timestamp
+ * 
+ * @throws {NextResponse} 500 Internal Server Error - Database creation failed
+ * 
+ * @example
+ * ```typescript
+ * // Request body
+ * {
+ *   "name": "My PostgreSQL DB",
+ *   "type": "postgresql",
+ *   "connection_string": "postgresql://user:pass@localhost:5432/dbname",
+ *   "tables": [{"name": "users", "record_count": 0}]
+ * }
+ * ```
  */
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
-    console.log('📊 API: Creating database in SQLite with data:', data);
-
     const database = await SQLiteManager.createDatabase(data);
-    console.log('✅ API: Database created successfully in SQLite:', database);
-
     return NextResponse.json(database);
   } catch (error) {
-    console.error('❌ API: Error creating database in SQLite:', error);
     return NextResponse.json(
       { error: 'Failed to create database' },
       { status: 500 }

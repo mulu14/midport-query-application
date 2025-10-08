@@ -17,18 +17,19 @@ export class ResponseParser {
    * Parses either SOAP XML or REST JSON response based on content type
    * @static
    * @param {RemoteAPIQueryResult} rawResult - Raw result from API manager
+   * @param {number} [limit] - Optional limit for number of records to return
    * @returns {RemoteAPIQueryResult} Processed result with unified data structure
    */
-  static parseUnifiedResponse(rawResult: RemoteAPIQueryResult): RemoteAPIQueryResult {
+  static parseUnifiedResponse(rawResult: RemoteAPIQueryResult, limit?: number): RemoteAPIQueryResult {
     try {
       // Determine response type based on content
       const isXMLResponse = rawResult.rawResponse?.includes('<?xml') || rawResult.rawResponse?.includes('<soap:');
       const isJSONResponse = rawResult.rawResponse?.startsWith('{') || rawResult.rawResponse?.startsWith('[');
 
       if (isXMLResponse) {
-        return this.parseSOAPResponse(rawResult);
+        return this.parseSOAPResponse(rawResult, limit);
       } else if (isJSONResponse) {
-        return this.parseRESTResponse(rawResult);
+        return this.parseRESTResponse(rawResult, limit);
       } else {
         // Unknown format - return as is with error flag
         return {
@@ -68,9 +69,10 @@ export class ResponseParser {
    * @private
    * @static
    * @param {RemoteAPIQueryResult} rawResult - Raw SOAP result
+   * @param {number} [limit] - Optional limit for number of records
    * @returns {RemoteAPIQueryResult} Processed SOAP result
    */
-  private static parseSOAPResponse(rawResult: RemoteAPIQueryResult): RemoteAPIQueryResult {
+  private static parseSOAPResponse(rawResult: RemoteAPIQueryResult, limit?: number): RemoteAPIQueryResult {
     try {
       if (!rawResult.rawResponse) {
         throw new Error('No SOAP response data to parse');
@@ -78,7 +80,17 @@ export class ResponseParser {
 
       // Parse SOAP XML response
       const xmlData = rawResult.rawResponse;
-      const records = this.extractSOAPRecords(xmlData);
+      let records = this.extractSOAPRecords(xmlData);
+      
+      // Apply client-side limit if specified
+      const originalCount = records.length;
+      if (limit && records.length > limit) {
+        records = records.slice(0, limit);
+      }
+      
+      const summary = limit && originalCount > limit 
+        ? `Retrieved ${records.length} of ${originalCount} records via SOAP API (limited for performance)`
+        : `Retrieved ${records.length} records via SOAP API`;
 
       return {
         ...rawResult,
@@ -87,7 +99,7 @@ export class ResponseParser {
           serviceType: 'SOAP',
           recordCount: records.length,
           records: records,
-          summary: `Retrieved ${records.length} records via SOAP API`,
+          summary: summary,
           type: 'soap_response'
         }
       };
@@ -115,9 +127,10 @@ export class ResponseParser {
    * @private
    * @static
    * @param {RemoteAPIQueryResult} rawResult - Raw REST result
+   * @param {number} [limit] - Optional limit for number of records
    * @returns {RemoteAPIQueryResult} Processed REST result
    */
-  private static parseRESTResponse(rawResult: RemoteAPIQueryResult): RemoteAPIQueryResult {
+  private static parseRESTResponse(rawResult: RemoteAPIQueryResult, limit?: number): RemoteAPIQueryResult {
     try {
       if (!rawResult.rawResponse) {
         throw new Error('No REST response data to parse');
@@ -143,6 +156,16 @@ export class ResponseParser {
       else if (jsonData.error) {
         throw new Error(`OData Service Error: ${jsonData.error.message || 'Unknown error'}`);
       }
+      
+      // Apply client-side limiting (we get full response from server and limit display)
+      const originalCount = records.length;
+      if (limit && records.length > limit) {
+        records = records.slice(0, limit);
+      }
+      
+      const summary = limit && originalCount > limit 
+        ? `Retrieved ${records.length} of ${originalCount} records via OData REST API (client-side limited)`
+        : `Retrieved ${records.length} records via OData REST API`;
 
       return {
         ...rawResult,
@@ -151,7 +174,7 @@ export class ResponseParser {
           serviceType: 'OData',
           recordCount: records.length,
           records: records,
-          summary: `Retrieved ${records.length} records via OData REST API`,
+          summary: summary,
           type: 'rest_response'
         }
       };
@@ -238,7 +261,6 @@ export class ResponseParser {
 
       return records;
     } catch (error) {
-      console.warn('Failed to extract SOAP records:', error);
       return [];
     }
   }

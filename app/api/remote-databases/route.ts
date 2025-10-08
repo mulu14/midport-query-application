@@ -13,20 +13,44 @@ import type { SOAPRequestConfig, StoredOAuth2Token } from '@/Entities/RemoteAPI'
 
 /**
  * GET endpoint to fetch all remote API databases
- * Retrieves all configured remote API databases from SQLite
+ * Retrieves all configured remote API databases from SQLite with their associated tables
+ * 
  * @async
  * @function GET
- * @returns {Promise<NextResponse>} JSON response with databases array
- * @throws {NextResponse} 500 error if database fetch fails
+ * @returns {Promise<NextResponse>} JSON response containing:
+ * @returns {Object[]} databases - Array of database objects
+ * @returns {string} databases[].id - Database ID
+ * @returns {string} databases[].name - Display name
+ * @returns {string} databases[].fullUrl - Complete API URL
+ * @returns {string} databases[].tenantName - Tenant identifier
+ * @returns {Object[]} databases[].tables - Array of table objects
+ * @returns {string} databases[].status - Connection status
+ * @returns {Date} databases[].createdAt - Creation timestamp
+ * 
+ * @throws {NextResponse} 500 - Internal server error if database fetch fails
+ * 
+ * @example
+ * ```http
+ * GET /api/remote-databases
+ * 
+ * Response:
+ * [
+ *   {
+ *     "id": "1",
+ *     "name": "MIDPORT_DEM",
+ *     "fullUrl": "https://api.example.com/tenant/services",
+ *     "tenantName": "MIDPORT_DEM",
+ *     "tables": [{"name": "ServiceCall_v2", "endpoint": "ServiceCall_v2"}],
+ *     "status": "active"
+ *   }
+ * ]
+ * ```
  */
 export async function GET() {
   try {
-    console.log('🔍 API: Fetching remote API databases from SQLite...');
     const databases = await SQLiteManager.getRemoteAPIDatabases();
-    console.log('📋 API: Returning remote API databases from SQLite:', databases.length);
     return NextResponse.json(databases);
   } catch (error) {
-    console.error('❌ API: Error fetching remote API databases from SQLite:', error);
     return NextResponse.json(
       { error: 'Failed to fetch remote API databases' },
       { status: 500 }
@@ -36,42 +60,75 @@ export async function GET() {
 
 /**
  * POST endpoint to create a new remote API database
- * Creates a new remote API database configuration in SQLite
- * Tests database connection before saving configuration
+ * Creates a new remote API database configuration in SQLite with validation
+ * 
  * @async
  * @function POST
- * @param {NextRequest} request - The incoming request with database configuration
- * @returns {Promise<NextResponse>} JSON response with creation result
- * @throws {NextResponse} 400 error if request data is invalid
- * @throws {NextResponse} 500 error if database creation fails
+ * @param {NextRequest} request - HTTP request containing database configuration
+ * @param {Object} request.body - Request body with database data
+ * @param {string} request.body.name - Display name for the database
+ * @param {string} request.body.tenantName - Unique tenant identifier
+ * @param {string} request.body.baseUrl - Base API URL
+ * @param {string} request.body.services - Services path
+ * @param {string[]} request.body.tables - Array of table/service names
+ * 
+ * @returns {Promise<NextResponse>} JSON response containing:
+ * @returns {string} id - Generated database ID
+ * @returns {string} name - Database display name
+ * @returns {string} tenantName - Tenant identifier
+ * @returns {string} fullUrl - Complete constructed API URL
+ * @returns {Object[]} tables - Array of created table objects
+ * @returns {boolean} isExisting - Whether database already existed
+ * @returns {string} message - Success message
+ * 
+ * @throws {NextResponse} 400 - Bad request if required fields are missing
+ * @throws {NextResponse} 500 - Internal server error if database creation fails
+ * 
+ * @example
+ * ```http
+ * POST /api/remote-databases
+ * Content-Type: application/json
+ * 
+ * {
+ *   "name": "MIDPORT Production",
+ *   "tenantName": "MIDPORT_PROD",
+ *   "baseUrl": "https://api.example.com",
+ *   "services": "LN/c4ws/services",
+ *   "tables": ["ServiceCall_v2", "Customer_v1"]
+ * }
+ * 
+ * Response:
+ * {
+ *   "id": "2",
+ *   "name": "MIDPORT Production",
+ *   "tenantName": "MIDPORT_PROD",
+ *   "fullUrl": "https://api.example.com/MIDPORT_PROD/LN/c4ws/services",
+ *   "tables": [...],
+ *   "isExisting": false,
+ *   "message": "Database created successfully"
+ * }
+ * ```
  */
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
-    console.log('📊 API: Creating remote API database in SQLite with data:', data);
-    console.log('📊 API: Data keys:', Object.keys(data));
-    console.log('📊 API: Data values:', data);
 
-    // Test database connection first
-    console.log('🔍 API: Testing database connection...');
-    try {
-      const testDatabases = await SQLiteManager.getRemoteAPIDatabases();
-      console.log('✅ API: Database connection test successful, found', testDatabases.length, 'databases');
-    } catch (testError) {
-      console.error('❌ API: Database connection test failed:', testError);
-      throw testError;
+    // Validate required fields
+    if (!data.name || !data.tenantName || !data.baseUrl) {
+      return NextResponse.json(
+        { error: 'Missing required fields: name, tenantName, baseUrl' },
+        { status: 400 }
+      );
     }
 
     const database = await SQLiteManager.createRemoteAPIDatabase(data);
-    console.log('✅ API: Remote API database created successfully in SQLite:', database);
-
     return NextResponse.json(database);
   } catch (error) {
-    console.error('❌ API: Error creating remote API database in SQLite:', error);
-    console.error('❌ API: Error details:', error instanceof Error ? error.message : String(error));
-    console.error('❌ API: Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
-      { error: 'Failed to create remote API database', details: error instanceof Error ? error.message : String(error) },
+      { 
+        error: 'Failed to create remote API database', 
+        details: error instanceof Error ? error.message : String(error) 
+      },
       { status: 500 }
     );
   }

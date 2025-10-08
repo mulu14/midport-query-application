@@ -74,20 +74,15 @@ export default function DatabaseList(props?: DatabaseListProps) {
 
   const [expandedDatabases, setExpandedDatabases] = useState<string[]>([]);
 
-  // Debug: Add console logs
-  console.log('🔍 DatabaseList component rendered');
-  console.log('DatabaseList received databases:', databases);
-  console.log('DatabaseList databases length:', databases.length);
-  console.log('DatabaseList context databases:', context.databases);
-
-  if (databases && databases.length > 0) {
-    databases.forEach((db, index) => {
-      console.log(`DatabaseList database ${index}:`, db);
-    });
-  } else {
-    console.log('⚠️ DatabaseList: No databases received');
-  }
-
+  /**
+   * Toggles the expanded/collapsed state of a database in the list
+   * @function toggleDatabase
+   * @param {string} dbId - Database ID to toggle
+   * 
+   * @description
+   * Manages the expansion state of database items to show/hide their tables.
+   * If the database is currently expanded, it collapses it. If collapsed, it expands it.
+   */
   const toggleDatabase = (dbId: string) => {
     setExpandedDatabases(prev => 
       prev.includes(dbId) 
@@ -96,6 +91,16 @@ export default function DatabaseList(props?: DatabaseListProps) {
     );
   };
 
+  /**
+   * Returns the appropriate CSS color class for database connection status
+   * @function getStatusColor
+   * @param {string} status - Database connection status
+   * @returns {string} CSS class name for the status color
+   * 
+   * @description
+   * Maps database connection status to appropriate Tailwind CSS color classes
+   * for visual status indication in the UI.
+   */
   const getStatusColor = (status: string) => {
     switch(status) {
       case 'connected': return 'text-blue-400';
@@ -105,28 +110,53 @@ export default function DatabaseList(props?: DatabaseListProps) {
     }
   };
 
+  /**
+   * Handles the add database button click event
+   * @function handleAddDatabase
+   * 
+   * @description
+   * Triggers the add database functionality, either through props callback
+   * or by showing the add database dialog via context.
+   */
   const handleAddDatabase = () => {
-    console.log('🔥 Add Database button clicked!');
-    console.log('onAddDatabase function:', onAddDatabase);
-    console.log('context.setShowAddDialog:', context.setShowAddDialog);
     onAddDatabase();
   };
 
+  /**
+   * Handles database deletion with user confirmation
+   * @async
+   * @function handleDeleteDatabase
+   * @param {string} dbId - Database ID to delete
+   * @param {string} dbName - Database name for confirmation dialog
+   * 
+   * @description
+   * Prompts user for confirmation before deleting a database.
+   * Shows success/error feedback and refreshes the database list.
+   */
   const handleDeleteDatabase = async (dbId: string, dbName: string) => {
-    if (window.confirm(`Are you sure you want to delete the database "${dbName}"? This action cannot be undone.`)) {
+    if (window.confirm(`Are you sure you want to delete the database \"${dbName}\"? This action cannot be undone.`)) {
       try {
         await deleteDatabase(dbId);
-        console.log('✅ Database deleted successfully:', dbName);
       } catch (error) {
-        console.error('❌ Error deleting database:', error);
         alert('Failed to delete database. Please try again.');
       }
     }
   };
 
+  /**
+   * Handles database edit button click
+   * @function handleEditDatabase
+   * @param {any} db - Database object to edit
+   * 
+   * @description
+   * Currently shows a placeholder alert. In future implementations,
+   * this would open an edit dialog for modifying database settings.
+   * 
+   * @todo Implement actual database editing functionality
+   */
   const handleEditDatabase = (db: any) => {
     // For now, just show an alert. In a real implementation, this would open an edit dialog
-    alert(`Edit functionality for "${db.name}" will be implemented in a future update.`);
+    alert(`Edit functionality for \"${db.name}\" will be implemented in a future update.`);
   };
 
   return (

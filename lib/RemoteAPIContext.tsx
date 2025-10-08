@@ -95,10 +95,11 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
       // Convert to RemoteAPITenant format
       const formattedTenants: RemoteAPITenant[] = tenantList.map((db: any) => ({
         id: db.id,
-        name: db.name || db.tenantName, // Use name field if available, fallback to tenantName
+        name: db.name || db.tenantName, // Display name
         tables: db.tables || [],
         status: db.status === 'active' ? 'connected' : 'disconnected',
-        fullUrl: db.fullUrl // Include the full URL from database configuration
+        fullUrl: db.fullUrl, // Include the full URL from database configuration
+        tenantName: db.tenantName // Keep the actual tenant ID for API calls
       }));
 
       setTenants(formattedTenants);
@@ -140,37 +141,86 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
 
       // Parse the query to determine action and parameters
       const queryStr = query.trim().toLowerCase();
-      let action = 'List'; // Default action for ION API
+      const apiType = (selectedTable as any).apiType || 'soap';
+      let action: string;
       let parameters = parseParametersFromQuery(query, selectedTable);
 
-      // Simple action determination based on query type
-      if (queryStr.includes('read') || queryStr.includes('get') || queryStr.startsWith('select') || queryStr.includes('list')) {
-        action = 'List';
-      } else if (queryStr.includes('create') || queryStr.includes('insert') || queryStr.startsWith('insert')) {
-        action = 'create';
-      } else if (queryStr.includes('update') || queryStr.startsWith('update')) {
-        action = 'update';
-      } else if (queryStr.includes('delete') || queryStr.startsWith('delete')) {
-        action = 'delete';
+      // Different action determination based on API type
+      if (apiType === 'rest') {
+        // For REST APIs, use HTTP methods
+        if (queryStr.includes('read') || queryStr.includes('get') || queryStr.startsWith('select') || queryStr.includes('list')) {
+          action = 'GET';
+        } else if (queryStr.includes('create') || queryStr.includes('insert') || queryStr.startsWith('insert')) {
+          action = 'POST';
+        } else if (queryStr.includes('update') || queryStr.startsWith('update')) {
+          action = 'PUT';
+        } else if (queryStr.includes('delete') || queryStr.startsWith('delete')) {
+          action = 'DELETE';
+        } else {
+          action = 'GET'; // Default for REST
+        }
+      } else {
+        // For SOAP APIs, use SOAP actions
+        if (queryStr.includes('read') || queryStr.includes('get') || queryStr.startsWith('select') || queryStr.includes('list')) {
+          action = 'List';
+        } else if (queryStr.includes('create') || queryStr.includes('insert') || queryStr.startsWith('insert')) {
+          action = 'create';
+        } else if (queryStr.includes('update') || queryStr.startsWith('update')) {
+          action = 'update';
+        } else if (queryStr.includes('delete') || queryStr.startsWith('delete')) {
+          action = 'delete';
+        } else {
+          action = 'List'; // Default for SOAP
+        }
       }
 
       // Build unified API request configuration
-      const config = {
-        tenant: selectedTenant.name,
-        table: selectedTable.endpoint,
-        apiType: (selectedTable as any).apiType || 'soap',
-        action: action,
-        parameters: parameters,
-        sqlQuery: query,
-        fullUrl: selectedTenant.fullUrl,
-        company: '',
-        oDataService: (selectedTable as any).oDataService,
-        entityName: (selectedTable as any).entityName
-      };
+      let config: any;
+      
+      if (apiType === 'rest') {
+        // For REST APIs, parse the table endpoint to extract oDataService and entityName
+        const endpoint = selectedTable.endpoint || selectedTable.name;
+        let oDataService = (selectedTable as any).oDataService;
+        let entityName = (selectedTable as any).entityName;
+        
+        // Parse endpoint like "/odata/tdapi.slsSalesOrder/Orders" or "tdapi.slsSalesOrder/Orders"
+        if (endpoint.includes('/')) {
+          const parts = endpoint.replace('/odata/', '').split('/');
+          if (parts.length >= 2) {
+            oDataService = parts[0]; // e.g., "tdapi.slsSalesOrder"
+            entityName = parts[1];   // e.g., "Orders"
+          }
+        }
+        
+        config = {
+          tenant: (selectedTenant as any).tenantName || selectedTenant.name, // Use actual tenant ID for API
+          table: entityName || endpoint,
+          apiType: 'rest',
+          action: action,
+          parameters: parameters,
+          sqlQuery: query,
+          fullUrl: null, // Don't use SOAP URL for REST
+          company: '2405', // Correct LN company number (confirmed from LN user config)
+          oDataService: oDataService,
+          entityName: entityName
+        };
+      } else {
+        // For SOAP APIs, use the existing logic
+        config = {
+          tenant: (selectedTenant as any).tenantName || selectedTenant.name, // Use actual tenant ID for API
+          table: selectedTable.endpoint,
+          apiType: 'soap',
+          action: action,
+          parameters: parameters,
+          sqlQuery: query,
+          fullUrl: selectedTenant.fullUrl,
+          company: '',
+          oDataService: null,
+          entityName: null
+        };
+      }
 
       // Use server-side API endpoint for OAuth2 and API calls
-      console.log(`🚀 Executing ${config.apiType?.toUpperCase()} query for ${config.tenant}/${config.table}`);
-      
       const response = await fetch('/api/remote-query', {
         method: 'POST',
         headers: {
@@ -200,7 +250,19 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
         setCurrentToken(newToken);
       }
       
-      console.log(`✅ Query completed: ${result.data?.summary || 'No summary available'}`);
+      // Add limit information to result summary
+      const limitApplied = parameters.limit;
+      const resultSummary = result.data?.summary || 'No summary available';
+      const finalSummary = limitApplied 
+        ? `${resultSummary} (Limited to ${limitApplied} records)`
+        : resultSummary;
+      
+      // Update result with limit info
+      if (result.data && limitApplied) {
+        result.data.summary = finalSummary;
+        result.note = `${result.note || ''} - Limited to first ${limitApplied} records for performance`.trim();
+      }
+      
       setResults([result]);
 
     } catch (error) {
@@ -214,9 +276,41 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
     setSelectedTenant(tenant);
     setSelectedTable(table);
 
-    // Generate a simple API request for the user
-    const apiQuery = `Read data from ${table.name} service`;
-    setQuery(apiQuery);
+    // Generate a proper SQL query based on the service/table name
+    const tableName = getBusinessFriendlyTableName(table);
+    const sqlQuery = `SELECT * FROM ${tableName};`;
+    setQuery(sqlQuery);
+  };
+
+  /**
+   * Converts technical service names to business-friendly table names for SQL
+   * @private
+   * @param {RemoteAPITable} table - The table/service object
+   * @returns {string} Business-friendly table name for SQL queries
+   */
+  const getBusinessFriendlyTableName = (table: RemoteAPITable): string => {
+    const serviceName = table.name || table.endpoint;
+    
+    // Handle OData REST services (e.g., "tdapi.slsSalesOrder/Orders" -> "Orders")
+    if (serviceName.includes('/')) {
+      const parts = serviceName.split('/');
+      const entityName = parts[parts.length - 1]; // Get the entity name after the last /
+      return entityName;
+    }
+    
+    // Handle SOAP services - convert technical names to business names
+    const businessNameMap: Record<string, string> = {
+      'BusinessPartner_v3': 'BusinessPartners',
+      'ServiceCall_v2': 'ServiceCalls', 
+      'ATPService_WT': 'AvailableToPromise',
+      'SalesOrder': 'SalesOrders',
+      'Customer_v1': 'Customers',
+      'Item_v1': 'Items',
+      'Address_v1': 'Addresses'
+    };
+    
+    // Return business-friendly name or fallback to original
+    return businessNameMap[serviceName] || serviceName;
   };
 
   /**
@@ -264,27 +358,27 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
 
     // Always add timestamp (overriding the one from SQLParser if needed)
     parameters.timestamp = new Date().toISOString();
+    
+    // Add default limit of 15 records if no limit is specified
+    if (!parameters.limit && !query.toLowerCase().includes('limit')) {
+      parameters.limit = 15;
+    }
 
     return parameters;
   };
 
   const updateTenant = async (id: string, data: Partial<RemoteAPITenant>) => {
     try {
-      console.log('🔄 Updating remote tenant:', id, data);
       setTenants(prev => prev.map(tenant =>
         tenant.id === id ? { ...tenant, ...data } : tenant
       ));
-      console.log('✅ Tenant updated successfully');
     } catch (error) {
-      console.error('❌ Error updating tenant:', error);
       throw error;
     }
   };
 
   const deleteTenant = async (id: string) => {
     try {
-      console.log('🔄 Deleting remote tenant:', id);
-
       // Delete via API endpoint
       const response = await fetch(`/api/remote-databases/${id}`, {
         method: 'DELETE',
@@ -302,10 +396,7 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
         setSelectedTable(null);
         setQuery('');
       }
-
-      console.log('✅ Tenant deleted successfully');
     } catch (error) {
-      console.error('❌ Error deleting tenant:', error);
       throw error;
     }
   };
@@ -327,8 +418,6 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
    */
   const createRemoteAPIDatabase = async (data: { name?: string; fullUrl: string; baseUrl: string; tenantName: string; services: string; tables: string[] }) => {
     try {
-      console.log('🔄 Creating remote API database:', data);
-
       // Create via API endpoint
       const response = await fetch('/api/remote-databases', {
         method: 'POST',
@@ -340,8 +429,6 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('❌ API Error Response:', response.status, response.statusText);
-        console.error('❌ API Error Data:', errorData);
         throw new Error(`Failed to create remote database: ${response.status} ${response.statusText} - ${errorData.error || errorData.details || 'Unknown error'}`);
       }
 
@@ -349,8 +436,6 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
 
       // Check if this is an existing database
       if (newDatabase.isExisting) {
-        console.log('ℹ️ Database already exists:', newDatabase.message);
-        
         // Convert to RemoteAPITenant format
         const existingTenant: RemoteAPITenant = {
           id: newDatabase.id,
@@ -390,11 +475,9 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
       };
 
       setTenants(prev => [newTenant, ...prev]);
-      console.log('✅ Remote API database created successfully');
       alert(newDatabase.message || 'Database created successfully');
       return newTenant;
     } catch (error) {
-      console.error('❌ Error creating remote API database:', error);
       throw error;
     }
   };

@@ -78,10 +78,19 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [showAddDialog, setShowAddDialog] = useState<boolean>(false);
 
+  /**
+   * Loads all databases from the API and initializes default database if none exist
+   * @async
+   * @function loadDatabases
+   * @throws {Error} If API request fails
+   * 
+   * @description
+   * Fetches all database configurations from the SQLite storage via API.
+   * If no databases exist, initializes with a default SQLite database.
+   * Auto-selects the first database and table for immediate use.
+   */
   const loadDatabases = async () => {
     try {
-      // Load virtual databases from SQLite storage
-
       const response = await fetch('/api/databases');
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -135,6 +144,17 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  /**
+   * Executes the current SQL query against the selected database
+   * @async
+   * @function executeQuery
+   * @throws {Error} If no database is selected or query execution fails
+   * 
+   * @description
+   * Executes the current query string against the selected database.
+   * Handles different database types (SQLite, API, etc.) with appropriate execution methods.
+   * Updates results state with query output and handles errors gracefully.
+   */
   const executeQuery = async () => {
     if (!query.trim()) return;
 
@@ -193,32 +213,77 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       }
 
     } catch (error) {
-      console.error('Error executing query:', error);
       setError(error instanceof Array ? error.join('\n') : String(error));
     } finally {
       setIsExecuting(false);
     }
   };
 
+  /**
+   * Refreshes the database list by reloading from API
+   * @async
+   * @function refreshDatabases
+   * 
+   * @description
+   * Triggers a reload of all database configurations from the server.
+   * Useful after adding, updating, or deleting databases.
+   */
   const refreshDatabases = async () => {
-    console.log('🔄 Context: Refreshing databases from SQLite...');
     await loadDatabases();
   };
 
+  /**
+   * Selects a database table and generates a default SELECT query
+   * @function selectTableAndQuery
+   * @param {DatabaseData} db - Database to select
+   * @param {DatabaseTable} table - Table to select
+   * 
+   * @description
+   * Updates the selected database and table, then generates a default
+   * SELECT * FROM [table] query for immediate execution.
+   * 
+   * @example
+   * ```typescript
+   * selectTableAndQuery(myDatabase, { name: 'customers', record_count: 100 });
+   * // Sets query to: "SELECT * FROM customers"
+   * ```
+   */
   const selectTableAndQuery = (db: DatabaseData, table: DatabaseTable) => {
-    console.log('🔄 Selecting table and generating query:', table.name);
     setSelectedDatabase(db);
     setSelectedTable(table);
     // Generate default SQL query based on selected table
     const defaultQuery = `SELECT * FROM ${table.name}`;
     setQuery(defaultQuery);
-    console.log('📝 Generated query:', defaultQuery);
   };
 
+  /**
+   * Creates a new database configuration entry
+   * @async
+   * @function createDatabase
+   * @param {DatabaseData} data - Database configuration data
+   * @param {string} data.name - Database display name
+   * @param {string} data.type - Database type (postgresql, mysql, mongodb, etc.)
+   * @param {string} [data.connection_string] - Database connection string
+   * @param {DatabaseTable[]} [data.tables] - Array of table definitions
+   * @returns {Promise<DatabaseData>} Created database object
+   * @throws {Error} If database creation fails
+   * 
+   * @description
+   * Creates a new database configuration via API call and refreshes the database list.
+   * If a database with the same name exists, returns the existing configuration.
+   * 
+   * @example
+   * ```typescript
+   * const newDb = await createDatabase({
+   *   name: 'My Database',
+   *   type: 'postgresql',
+   *   connection_string: 'postgresql://...',
+   *   tables: [{ name: 'users', record_count: 0 }]
+   * });
+   * ```
+   */
   const createDatabase = async (data: DatabaseData) => {
     try {
-      console.log('🔄 Context: Creating virtual database in SQLite:', data);
-
       // Create database entry via API
       const response = await fetch('/api/databases', {
         method: 'POST',
@@ -233,18 +298,37 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       }
 
       const newDatabase = await response.json();
-      console.log('✅ Context: Virtual database created in SQLite:', newDatabase);
 
       // Refresh databases to show the new one
       await refreshDatabases();
 
       return newDatabase;
     } catch (error) {
-      console.error('❌ Context: Error creating virtual database:', error);
       throw error;
     }
   };
 
+  /**
+   * Updates an existing database configuration
+   * @async
+   * @function updateDatabase
+   * @param {string} id - Database ID to update
+   * @param {Partial<DatabaseData>} data - Partial database data to update
+   * @returns {Promise<DatabaseData>} Updated database object
+   * @throws {Error} If database update fails
+   * 
+   * @description
+   * Updates specific fields of an existing database configuration via API call.
+   * Refreshes the database list to reflect changes.
+   * 
+   * @example
+   * ```typescript
+   * const updated = await updateDatabase('db-123', {
+   *   name: 'Updated Database Name',
+   *   status: 'connected'
+   * });
+   * ```
+   */
   const updateDatabase = async (id: string, data: Partial<DatabaseData>) => {
     try {
       const response = await fetch(`/api/databases/${id}`, {
@@ -262,11 +346,30 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       await refreshDatabases();
       return await response.json();
     } catch (error) {
-      console.error('Error updating database:', error);
       throw error;
     }
   };
 
+  /**
+   * Deletes a database configuration
+   * @async
+   * @function deleteDatabase
+   * @param {string} id - Database ID to delete
+   * @returns {Promise<boolean>} True if deletion was successful
+   * @throws {Error} If database deletion fails
+   * 
+   * @description
+   * Permanently deletes a database configuration via API call.
+   * This operation cannot be undone. Refreshes the database list after deletion.
+   * 
+   * @example
+   * ```typescript
+   * const success = await deleteDatabase('db-123');
+   * if (success) {
+   *   // Database deleted successfully
+   * }
+   * ```
+   */
   const deleteDatabase = async (id: string) => {
     try {
       const response = await fetch(`/api/databases/${id}`, {
@@ -280,7 +383,6 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       await refreshDatabases();
       return true;
     } catch (error) {
-      console.error('Error deleting database:', error);
       throw error;
     }
   };
@@ -317,6 +419,23 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Higher-Order Component that wraps a component with DatabaseProvider
+ * @function withDatabaseContext
+ * @template T - Component props type
+ * @param {React.ComponentType<T>} Component - Component to wrap with database context
+ * @returns {React.ComponentType<T>} Component wrapped with DatabaseProvider
+ * 
+ * @description
+ * HOC that provides database context to components that don't have access to a parent provider.
+ * Automatically wraps the component with DatabaseProvider.
+ * 
+ * @example
+ * ```typescript
+ * const MyComponentWithDB = withDatabaseContext(MyComponent);
+ * // MyComponent now has access to database context without needing a parent provider
+ * ```
+ */
 export function withDatabaseContext<T extends object>(
   Component: React.ComponentType<T>
 ) {
@@ -330,11 +449,52 @@ export function withDatabaseContext<T extends object>(
 }
 
 /**
- * Custom hook to access Database context
- * Must be used within a DatabaseProvider component
+ * Custom hook to access Database context state and methods
  * @function useDatabase
- * @returns {DatabaseContextType} The Database context value
+ * @returns {DatabaseContextType} The Database context value containing:
+ * @returns {DatabaseData[]} databases - Array of all available databases
+ * @returns {DatabaseData|null} selectedDatabase - Currently selected database
+ * @returns {DatabaseTable|null} selectedTable - Currently selected table
+ * @returns {string} query - Current SQL query string
+ * @returns {any[]} results - Query execution results
+ * @returns {string|null} error - Current error message
+ * @returns {boolean} isExecuting - Whether a query is currently executing
+ * @returns {boolean} showAddDialog - Whether the add database dialog is visible
+ * @returns {Function} setSelectedDatabase - Function to set selected database
+ * @returns {Function} setSelectedTable - Function to set selected table
+ * @returns {Function} setQuery - Function to set query string
+ * @returns {Function} selectTableAndQuery - Function to select table and generate query
+ * @returns {Function} executeQuery - Function to execute current query
+ * @returns {Function} setShowAddDialog - Function to control dialog visibility
+ * @returns {Function} refreshDatabases - Function to refresh database list
+ * @returns {Function} createDatabase - Function to create new database
+ * @returns {Function} updateDatabase - Function to update existing database
+ * @returns {Function} deleteDatabase - Function to delete database
+ * 
  * @throws {Error} If used outside of DatabaseProvider
+ * 
+ * @description
+ * Must be used within a component wrapped by DatabaseProvider.
+ * Provides access to all database-related state and operations.
+ * 
+ * @example
+ * ```typescript
+ * function MyComponent() {
+ *   const {
+ *     databases,
+ *     selectedDatabase,
+ *     executeQuery,
+ *     results
+ *   } = useDatabase();
+ * 
+ *   return (
+ *     <div>
+ *       <p>Databases: {databases.length}</p>
+ *       <p>Results: {results.length}</p>
+ *     </div>
+ *   );
+ * }
+ * ```
  */
 export function useDatabase() {
   const context = useContext(DatabaseContext);

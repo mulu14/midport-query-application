@@ -42,8 +42,6 @@ export class UnifiedAPIManager {
     }
     
     try {
-      console.log(`🔄 UnifiedAPIManager: Executing ${config.apiType.toUpperCase()} API request for ${config.tenant}/${config.table}`);
-      
       // Load OAuth2 configuration from environment variables
       const oauth2Config = OAuth2ConfigManager.loadConfigFromEnv();
 
@@ -54,10 +52,8 @@ export class UnifiedAPIManager {
       let rawResult: RemoteAPIQueryResult;
       
       if (config.apiType === 'rest') {
-        console.log('📡 Routing to REST API Manager');
         rawResult = await RestAPIManager.executeQuery(config, token);
       } else {
-        console.log('🧼 Routing to SOAP API Manager');
         // Convert to legacy SOAP config for backward compatibility
         const soapConfig = {
           ...config,
@@ -66,15 +62,13 @@ export class UnifiedAPIManager {
         rawResult = await RemoteAPIManager.executeQueryWithToken(soapConfig, token);
       }
 
-      // Parse the response using unified parser
-      console.log('🔄 Parsing response with unified parser...');
-      const parsedResult = ResponseParser.parseUnifiedResponse(rawResult);
+      // Parse the response using unified parser with limit
+      const limit = config.parameters?.limit || 15; // Default to 15 if not specified
+      const parsedResult = ResponseParser.parseUnifiedResponse(rawResult, limit);
       
-      console.log(`✅ Response parsed: ${ResponseParser.createSummary(parsedResult)}`);
       return parsedResult;
 
     } catch (error) {
-      console.error(`❌ UnifiedAPIManager: Error executing ${config.apiType} request:`, error);
       throw error;
     }
   }

@@ -64,7 +64,7 @@ export default function IONAPIResultsDisplay({ result }: IONAPIResultsDisplayPro
       await navigator.clipboard.writeText(text);
       // Could add a toast notification here
     } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+      // Silently handle clipboard errors
     }
   };
 

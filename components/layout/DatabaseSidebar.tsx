@@ -26,7 +26,7 @@ export function DatabaseSidebar() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Mode Toggle Header */}
+      {/* Mode Toggle Header 
       <div className="p-2 border-b border-slate-600/50 bg-slate-800/50 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {mode === 'local' ? (
@@ -52,15 +52,17 @@ export function DatabaseSidebar() {
             <ToggleRight className="w-4 h-4" />
           )}
         </Button>
-      </div>
+      </div> */}
 
-      {/* Database List Content */}
+      
       <div className="flex-1">
+        {/* Database List Content 
         {mode === 'local' ? (
           <DatabaseList />
         ) : (
-          <RemoteAPIDatabaseList />
-        )}
+         
+        )}*/}
+         <RemoteAPIDatabaseList />
       </div>
     </div>
   );

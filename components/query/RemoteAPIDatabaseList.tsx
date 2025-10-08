@@ -75,12 +75,10 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
   };
 
   const handleDeleteTenant = async (tenantId: string, tenantName: string) => {
-    if (window.confirm(`Are you sure you want to delete the tenant "${tenantName}"? This action cannot be undone.`)) {
+    if (window.confirm(`Are you sure you want to delete the tenant \"${tenantName}\"? This action cannot be undone.`)) {
       try {
         await deleteTenant(tenantId);
-        console.log('✅ Tenant deleted successfully:', tenantName);
       } catch (error) {
-        console.error('❌ Error deleting tenant:', error);
         alert('Failed to delete tenant. Please try again.');
       }
     }
@@ -88,7 +86,51 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
 
   const handleEditTenant = (tenant: any) => {
     // For now, just show an alert. In a real implementation, this would open an edit dialog
-    alert(`Edit functionality for "${tenant.name}" will be implemented in a future update.`);
+    alert(`Edit functionality for \"${tenant.name}\" will be implemented in a future update.`);
+  };
+  
+  /**
+   * Converts technical service names to business-friendly display names
+   * @param {any} table - The table/service object
+   * @returns {string} Business-friendly display name
+   */
+  const getBusinessFriendlyDisplayName = (table: any): string => {
+    const serviceName = table.name || table.endpoint;
+    
+    // Handle OData REST services (e.g., "tdapi.slsSalesOrder/Orders" -> "Sales Orders")
+    if (serviceName.includes('/')) {
+      const parts = serviceName.split('/');
+      const entityName = parts[parts.length - 1]; // Get the entity name after the last /
+      
+      // Convert entity names to readable format
+      const entityDisplayMap: Record<string, string> = {
+        'Orders': 'Sales Orders',
+        'SalesOrders': 'Sales Orders',
+        'Employees': 'Employees',
+        'Customers': 'Customers',
+        'BusinessPartners': 'Business Partners',
+        'Items': 'Items',
+        'Products': 'Products',
+        'Accounts': 'Accounts',
+        'Invoices': 'Invoices'
+      };
+      
+      return entityDisplayMap[entityName] || entityName;
+    }
+    
+    // Handle SOAP services - convert technical names to business names
+    const businessNameMap: Record<string, string> = {
+      'BusinessPartner_v3': 'Business Partners',
+      'ServiceCall_v2': 'Service Calls', 
+      'ATPService_WT': 'Available to Promise',
+      'SalesOrder': 'Sales Orders',
+      'Customer_v1': 'Customers',
+      'Item_v1': 'Items',
+      'Address_v1': 'Addresses'
+    };
+    
+    // Return business-friendly name or fallback to original
+    return businessNameMap[serviceName] || serviceName;
   };
 
   return (
@@ -219,7 +261,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                                         }`}
                                       >
                                         <Table className="w-3 h-3" />
-                                        <span className="text-sm font-medium flex-1 text-left text-white">{table.name}</span>
+                                        <span className="text-sm font-medium flex-1 text-left text-white">{getBusinessFriendlyDisplayName(table)}</span>
                                       </button>
                                     ))}
                                   </motion.div>
@@ -262,12 +304,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                                         }`}
                                       >
                                         <Table className="w-3 h-3" />
-                                        <span className="text-sm font-medium flex-1 text-left text-white">{table.name}</span>
-                                        {table.oDataService && (
-                                          <span className="text-xs text-slate-400 truncate max-w-[80px]">
-                                            {table.oDataService}
-                                          </span>
-                                        )}
+                                        <span className="text-sm font-medium flex-1 text-left text-white">{getBusinessFriendlyDisplayName(table)}</span>
                                       </button>
                                     ))
                                   ) : (

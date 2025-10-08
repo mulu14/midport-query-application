@@ -42,7 +42,7 @@ const SidebarModeContext = createContext<SidebarModeContextType | undefined>(und
  * @returns {JSX.Element} Provider component with context value
  */
 export function SidebarModeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<SidebarMode>('local');
+  const [mode, setMode] = useState<SidebarMode>('remote');
 
   const value: SidebarModeContextType = {
     mode,

@@ -83,7 +83,22 @@ export class SQLiteManager {
     return this.db;
   }
 
-  // Promise-based wrapper functions following the article's pattern
+  /**
+   * Promise-based wrapper for SQLite's db.all() method to retrieve multiple rows
+   * @private
+   * @static
+   * @async
+   * @param {string} query - SQL query string with parameter placeholders
+   * @param {any[]} [params=[]] - Array of values to bind to query placeholders
+   * @returns {Promise<any[]>} Array of rows returned by the query
+   * @throws {Error} If database is not initialized or query fails
+   * 
+   * @example
+   * ```typescript
+   * // Get all customers with a specific email domain
+   * const users = await apiGet('SELECT * FROM customers WHERE email LIKE ?', ['%@example.com']);
+   * ```
+   */
   private static async apiGet(query: string, params: any[] = []): Promise<any[]> {
     return await new Promise((resolve, reject) => {
       if (!this.db) {
@@ -101,6 +116,23 @@ export class SQLiteManager {
     });
   }
 
+  /**
+   * Promise-based wrapper for SQLite's db.run() method to execute INSERT, UPDATE, DELETE queries
+   * @private
+   * @static
+   * @async
+   * @param {string} query - SQL query string with parameter placeholders
+   * @param {any[]} [params=[]] - Array of values to bind to query placeholders
+   * @returns {Promise<any>} SQLite run result object with lastID, changes properties
+   * @throws {Error} If database is not initialized or query execution fails
+   * 
+   * @example
+   * ```typescript
+   * // Insert a new customer and get the lastID
+   * const result = await apiPost('INSERT INTO customers (name, email) VALUES (?, ?)', ['John', 'john@example.com']);
+   * // Access the lastID from result.lastID
+   * ```
+   */
   private static async apiPost(query: string, params: any[] = []): Promise<any> {
     return await new Promise((resolve, reject) => {
       if (!this.db) {
@@ -118,6 +150,28 @@ export class SQLiteManager {
     });
   }
 
+  /**
+   * Promise-based wrapper for SQLite's db.exec() method to execute multiple SQL statements
+   * @private
+   * @static
+   * @async
+   * @param {string} query - SQL statement(s) to execute (can contain multiple statements separated by semicolons)
+   * @returns {Promise<void>} Resolves when execution completes successfully
+   * @throws {Error} If database is not initialized or execution fails
+   * 
+   * @description
+   * Used primarily for schema operations like CREATE TABLE, CREATE INDEX, and migrations.
+   * Does not support parameter binding - use apiPost() for parameterized queries.
+   * 
+   * @example
+   * ```typescript
+   * // Create multiple tables in one call
+   * await apiExec(`
+   *   CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+   *   CREATE INDEX idx_users_name ON users(name);
+   * `);
+   * ```
+   */
   private static async apiExec(query: string): Promise<void> {
     return await new Promise((resolve, reject) => {
       if (!this.db) {
@@ -345,6 +399,19 @@ export class SQLiteManager {
     }
   }
 
+  /**
+   * Seeds the database with sample data for testing and demonstration purposes
+   * @private
+   * @static
+   * @async
+   * @returns {Promise<void>} Resolves when seeding is complete
+   * @throws {Error} If seeding operations fail
+   * 
+   * @description
+   * Creates sample customers, products, and orders if the database is empty.
+   * This method is idempotent - it checks for existing data before inserting.
+   * Used during database initialization to provide meaningful demo data.
+   */
   private static async seedSampleData(): Promise<void> {
     try {
       // Check if data already exists
@@ -597,6 +664,33 @@ export class SQLiteManager {
     return result;
   }
 
+  /**
+   * Retrieves a specific remote API database by ID with its associated tables
+   * @static
+   * @async
+   * @param {string} id - Database ID to retrieve
+   * @returns {Promise<Object|null>} Database object with tables, or null if not found
+   * @returns {string} return.id - Database ID
+   * @returns {string} return.name - Display name of the database
+   * @returns {string} return.fullUrl - Complete API URL
+   * @returns {string} return.baseUrl - Base URL of the API
+   * @returns {string} return.tenantName - Tenant identifier
+   * @returns {string} return.services - Services path
+   * @returns {string} return.status - Connection status
+   * @returns {Date} return.createdAt - Creation timestamp
+   * @returns {Date} return.updatedAt - Last update timestamp
+   * @returns {Array} return.tables - Array of table objects with name and endpoint
+   * @throws {Error} If database query fails
+   * 
+   * @example
+   * ```typescript
+   * const database = await SQLiteManager.getRemoteAPIDatabaseById('123');
+   * if (database) {
+   *   // Process the database with its tables
+   *   return database;
+   * }
+   * ```
+   */
   static async getRemoteAPIDatabaseById(id: string): Promise<any | null> {
     await this.initialize();
     const databases = await this.apiGet(`
@@ -629,12 +723,58 @@ export class SQLiteManager {
     };
   }
 
+  /**
+   * Deletes a remote API database and all its associated tables
+   * @static
+   * @async
+   * @param {string} id - Database ID to delete
+   * @returns {Promise<boolean>} Always returns true if deletion succeeds
+   * @throws {Error} If database deletion fails
+   * 
+   * @description
+   * Uses CASCADE DELETE to automatically remove all associated tables from remote_api_tables.
+   * This operation is irreversible.
+   * 
+   * @example
+   * ```typescript
+   * const success = await SQLiteManager.deleteRemoteAPIDatabase('123');
+   * // Database deletion completed successfully
+   * ```
+   */
   static async deleteRemoteAPIDatabase(id: string): Promise<boolean> {
     await this.initialize();
     await this.apiPost('DELETE FROM remote_api_databases WHERE id = ?', [id]);
     return true;
   }
 
+  /**
+   * Creates a new local database entry with tables
+   * @static
+   * @async
+   * @param {DatabaseData} data - Database configuration data
+   * @param {string} data.name - Display name for the database (must be unique)
+   * @param {'postgresql'|'mysql'|'mongodb'|'api'|'local'|'sqlitecloud'} data.type - Database type
+   * @param {string} [data.connection_string] - Connection string for external databases
+   * @param {string} [data.api_key] - API key for authentication
+   * @param {DatabaseTable[]} [data.tables] - Array of table definitions
+   * @param {'connected'|'disconnected'|'error'} [data.status='connected'] - Initial status
+   * @returns {Promise<DatabaseData>} Created database object with generated ID and timestamps
+   * @throws {Error} If database creation fails
+   * 
+   * @description
+   * Creates a local database configuration entry. If a database with the same name already exists,
+   * returns the existing database instead of creating a duplicate.
+   * 
+   * @example
+   * ```typescript
+   * const newDb = await SQLiteManager.createDatabase({
+   *   name: 'Production PostgreSQL',
+   *   type: 'postgresql',
+   *   connection_string: 'postgresql://user:pass@localhost:5432/dbname',
+   *   tables: [{ name: 'users', record_count: 100 }]
+   * });
+   * ```
+   */
   static async createDatabase(data: DatabaseData): Promise<DatabaseData> {
     await this.initialize();
 
@@ -912,18 +1052,76 @@ export class SQLiteManager {
     });
   }
 
-  // Public methods for entity access
+  /**
+   * Retrieves all customers from the sample data
+   * @static
+   * @async
+   * @returns {Promise<Array>} Array of customer objects
+   * @returns {string} return[].id - Customer ID
+   * @returns {string} return[].name - Customer name
+   * @returns {string} return[].email - Customer email address
+   * @returns {string} return[].phone - Customer phone number
+   * @throws {Error} If database query fails
+   * 
+   * @example
+   * ```typescript
+   * const customers = await SQLiteManager.getCustomers();
+   * // Process the returned customers array
+   * ```
+   */
   static async getCustomers(): Promise<any[]> {
     await this.initialize();
     return this.apiGet('SELECT id, name, email, phone FROM customers ORDER BY name');
   }
 
+  /**
+   * Retrieves a specific customer by ID
+   * @static
+   * @async
+   * @param {string} id - Customer ID to retrieve
+   * @returns {Promise<Object|null>} Customer object or null if not found
+   * @returns {string} return.id - Customer ID
+   * @returns {string} return.name - Customer name
+   * @returns {string} return.email - Customer email address
+   * @returns {string} return.phone - Customer phone number
+   * @throws {Error} If database query fails
+   * 
+   * @example
+   * ```typescript
+   * const customer = await SQLiteManager.getCustomerById('1');
+   * if (customer) {
+   *   // Process the customer data
+   *   return customer;
+   * }
+   * ```
+   */
   static async getCustomerById(id: string): Promise<any | null> {
     await this.initialize();
     const customers = await this.apiGet('SELECT id, name, email, phone FROM customers WHERE id = ?', [id]);
     return customers.length > 0 ? customers[0] : null;
   }
 
+  /**
+   * Creates a new customer record
+   * @static
+   * @async
+   * @param {Object} data - Customer data
+   * @param {string} data.name - Customer name
+   * @param {string} data.email - Customer email address (must be unique)
+   * @param {string} data.phone - Customer phone number
+   * @returns {Promise<Object>} Created customer object with generated ID
+   * @throws {Error} If customer creation fails or email already exists
+   * 
+   * @example
+   * ```typescript
+   * const newCustomer = await SQLiteManager.createCustomer({
+   *   name: 'Jane Doe',
+   *   email: 'jane@example.com',
+   *   phone: '+1-555-0199'
+   * });
+   * // Customer created successfully with generated ID
+   * ```
+   */
   static async createCustomer(data: { name: string; email: string; phone: string }): Promise<any> {
     await this.initialize();
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

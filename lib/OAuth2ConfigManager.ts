@@ -33,9 +33,8 @@ export class OAuth2ConfigManager {
       try {
         const envPath = path.resolve(process.cwd(), '.env.local');
         loadDotenv({ path: envPath, override: false });
-        console.log('\u{1F50D} OAuth2ConfigManager: .env.local loaded from:', envPath);
       } catch (error) {
-        console.warn('\u{26A0}\uFE0F OAuth2ConfigManager: Failed to load .env.local:', error);
+        // Silently handle .env.local loading errors
       }
     }
     
@@ -50,11 +49,7 @@ export class OAuth2ConfigManager {
     ];
     // Note: ION_SCOPE is not required for password grant type
 
-    console.log('🔍 OAuth2ConfigManager: Checking environment variables...');
-    console.log('🔍 NODE_ENV:', process.env.NODE_ENV);
-    console.log('🔍 Available ION_ vars:', Object.keys(process.env).filter(key => key.startsWith('ION_')).sort());
-
-    // Check if we're in development mode and show helpful error
+    // Validate required environment variables
     const missingVars: string[] = [];
     const foundVars: string[] = [];
     
@@ -62,10 +57,8 @@ export class OAuth2ConfigManager {
       const value = process.env[envVar];
       if (!value || value.trim() === '') {
         missingVars.push(envVar);
-        console.log(`❌ Missing: ${envVar}`);
       } else {
         foundVars.push(envVar);
-        console.log(`✅ Found: ${envVar} (length: ${value.length})`);
       }
     }
     
@@ -80,11 +73,9 @@ ${requiredEnvVars.map(v => `${v}=your_${v.toLowerCase()}_here`).join('\n')}
 Found variables: ${foundVars.join(', ')}
 Missing variables: ${missingVars.join(', ')}`;
       
-      console.error('❌ OAuth2ConfigManager: Environment variables error:', errorMessage);
       throw new Error(errorMessage);
     }
     
-    console.log('✅ OAuth2ConfigManager: All required environment variables found');
 
     return {
       clientId: process.env.ION_CLIENT_ID!,
@@ -107,8 +98,6 @@ Missing variables: ${missingVars.join(', ')}`;
    */
   static async getAccessToken(config: OAuth2Config): Promise<StoredOAuth2Token> {
     try {
-      console.log('🔐 OAuth2ConfigManager: Requesting access token');
-      
       // Explicitly construct the token endpoint URL
       const tokenEndpoint = `${process.env.ION_PORTAL_URL}${process.env.ION_TOKEN_ENDPOINT}`;
       
@@ -116,7 +105,7 @@ Missing variables: ${missingVars.join(', ')}`;
       const clientTenant = config.clientId.split('~')[0];
       const saakTenant = config.username.split('#')[0];
       if (clientTenant !== saakTenant) {
-        console.warn('⚠️  OAuth2ConfigManager: Tenant mismatch between Client ID and Service Account!');
+        // Tenant mismatch detected but continue processing
       }
 
       // Use password credentials grant for ION API authentication
@@ -144,12 +133,10 @@ Missing variables: ${missingVars.join(', ')}`;
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ OAuth2ConfigManager: Token request failed:', response.status, response.statusText);
         throw new Error(`OAuth2 token request failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const tokenResponse: OAuth2TokenResponse = await response.json();
-      console.log('✅ OAuth2ConfigManager: Access token acquired successfully');
 
       // Convert response to stored token format
       const storedToken: StoredOAuth2Token = {
@@ -163,7 +150,6 @@ Missing variables: ${missingVars.join(', ')}`;
       return storedToken;
 
     } catch (error) {
-      console.error('❌ OAuth2ConfigManager: Token acquisition failed:', error);
       throw error;
     }
   }
@@ -209,7 +195,6 @@ Missing variables: ${missingVars.join(', ')}`;
     }
 
     try {
-      console.log('🔄 OAuth2ConfigManager: Refreshing access token');
 
       const formData = new URLSearchParams();
       formData.append('grant_type', 'refresh_token');
@@ -232,7 +217,6 @@ Missing variables: ${missingVars.join(', ')}`;
       }
 
       const tokenResponse: OAuth2TokenResponse = await response.json();
-      console.log('✅ OAuth2ConfigManager: Token refreshed successfully');
 
       return {
         accessToken: tokenResponse.access_token,
@@ -243,7 +227,6 @@ Missing variables: ${missingVars.join(', ')}`;
       };
 
     } catch (error) {
-      console.error('❌ OAuth2ConfigManager: Token refresh failed:', error);
       throw error;
     }
   }
