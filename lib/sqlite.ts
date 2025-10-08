@@ -376,6 +376,15 @@ export class SQLiteManager {
         if (!hasEntityNameColumn) {
           await this.apiExec(`ALTER TABLE remote_api_tables ADD COLUMN entity_name TEXT`);
         }
+
+        // Add updated_at column if it doesn't exist
+        const hasUpdatedAtColumn = tableColumns.some((col: any) => col.name === 'updated_at');
+        if (!hasUpdatedAtColumn) {
+          // SQLite doesn't allow non-constant defaults when adding columns
+          await this.apiExec(`ALTER TABLE remote_api_tables ADD COLUMN updated_at DATETIME`);
+          // Update existing rows with current timestamp
+          await this.apiExec(`UPDATE remote_api_tables SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL`);
+        }
       } catch (error) {
         // Migration error (likely table is new or already migrated)
       }
@@ -744,6 +753,43 @@ export class SQLiteManager {
   static async deleteRemoteAPIDatabase(id: string): Promise<boolean> {
     await this.initialize();
     await this.apiPost('DELETE FROM remote_api_databases WHERE id = ?', [id]);
+    return true;
+  }
+
+  /**
+   * Updates a specific table name within a remote database
+   * @static
+   * @async
+   * @param {string} databaseId - Database/tenant ID
+   * @param {string} currentTableName - Current table name to update
+   * @param {string} newTableName - New table name
+   * @returns {Promise<boolean>} True if update succeeded
+   * @throws {Error} If update fails
+   */
+  static async updateRemoteAPITable(databaseId: string, currentTableName: string, newTableName: string): Promise<boolean> {
+    await this.initialize();
+    await this.apiPost(
+      'UPDATE remote_api_tables SET name = ?, endpoint = ?, updated_at = CURRENT_TIMESTAMP WHERE database_id = ? AND name = ?',
+      [newTableName, newTableName, databaseId, currentTableName]
+    );
+    return true;
+  }
+
+  /**
+   * Deletes a specific table from a remote database
+   * @static
+   * @async
+   * @param {string} databaseId - Database/tenant ID
+   * @param {string} tableName - Table name to delete
+   * @returns {Promise<boolean>} True if deletion succeeded
+   * @throws {Error} If deletion fails
+   */
+  static async deleteRemoteAPITable(databaseId: string, tableName: string): Promise<boolean> {
+    await this.initialize();
+    await this.apiPost(
+      'DELETE FROM remote_api_tables WHERE database_id = ? AND name = ?',
+      [databaseId, tableName]
+    );
     return true;
   }
 

@@ -40,7 +40,8 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
     selectTableAndQuery,
     setShowAddDialog,
     updateTenant,
-    deleteTenant
+    deleteTenant,
+    loadTenants
   } = useRemoteAPI();
   
   const { setMode } = useSidebarMode();
@@ -87,6 +88,90 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
   const handleEditTenant = (tenant: any) => {
     // For now, just show an alert. In a real implementation, this would open an edit dialog
     alert(`Edit functionality for \"${tenant.name}\" will be implemented in a future update.`);
+  };
+
+  /**
+   * Handles editing a table/service within a tenant
+   * @param {string} tenantId - ID of the tenant containing the table
+   * @param {any} table - Table object to edit
+   * @param {'soap'|'rest'} apiType - API type of the service
+   */
+  const handleEditTable = (tenantId: string, table: any, apiType: 'soap' | 'rest') => {
+    const newName = prompt(`Edit ${apiType.toUpperCase()} service name:`, table.name);
+    if (newName && newName !== table.name) {
+      // Update the table name
+      updateTableName(tenantId, table.name, newName, apiType);
+    }
+  };
+
+  /**
+   * Handles deleting a table/service from a tenant
+   * @param {string} tenantId - ID of the tenant containing the table
+   * @param {any} table - Table object to delete
+   * @param {'soap'|'rest'} apiType - API type of the service
+   */
+  const handleDeleteTable = (tenantId: string, table: any, apiType: 'soap' | 'rest') => {
+    const serviceType = apiType.toUpperCase();
+    const displayName = getBusinessFriendlyDisplayName(table);
+    
+    if (window.confirm(`Are you sure you want to delete the ${serviceType} service \"${displayName}\" (${table.name})?\n\nThis action cannot be undone.`)) {
+      deleteTableFromTenant(tenantId, table.name);
+    }
+  };
+
+  /**
+   * Updates a table name in the database
+   * @param {string} tenantId - ID of the tenant
+   * @param {string} oldName - Current table name
+   * @param {string} newName - New table name
+   * @param {'soap'|'rest'} apiType - API type of the service
+   */
+  const updateTableName = async (tenantId: string, oldName: string, newName: string, apiType: 'soap' | 'rest') => {
+    try {
+      const response = await fetch(`/api/remote-databases/${tenantId}/tables/${encodeURIComponent(oldName)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          name: newName,
+          apiType: apiType
+        }),
+      });
+      
+      if (response.ok) {
+        // Refresh the tenants list to show updated data
+        await loadTenants();
+        alert('Service name updated successfully!');
+      } else {
+        alert('Failed to update service name. Please try again.');
+      }
+    } catch (error) {
+      alert('Error updating service name. Please check your connection and try again.');
+    }
+  };
+
+  /**
+   * Deletes a table from a tenant
+   * @param {string} tenantId - ID of the tenant
+   * @param {string} tableName - Name of the table to delete
+   */
+  const deleteTableFromTenant = async (tenantId: string, tableName: string) => {
+    try {
+      const response = await fetch(`/api/remote-databases/${tenantId}/tables/${encodeURIComponent(tableName)}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        // Refresh the tenants list to show updated data
+        await loadTenants();
+        alert('Service deleted successfully!');
+      } else {
+        alert('Failed to delete service. Please try again.');
+      }
+    } catch (error) {
+      alert('Error deleting service. Please check your connection and try again.');
+    }
   };
   
   /**
@@ -253,16 +338,41 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                                     className="ml-6 space-y-0.5"
                                   >
                                     {soapServices.map((table: any) => (
-                                      <button
-                                        key={`${tenant.id}-soap-${table.name}`}
-                                        onClick={() => selectTableAndQuery(tenant, table)}
-                                        className={`w-full text-left p-2 rounded transition-colors duration-200 text-xs hover:bg-slate-700/50 hover:text-white flex items-center gap-2 group ${
-                                          selectedTable?.name === table.name && selectedTenant?.id === tenant.id ? 'bg-blue-500/30 text-white border border-blue-500/50' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
-                                        }`}
-                                      >
-                                        <Table className="w-3 h-3" />
-                                        <span className="text-sm font-medium flex-1 text-left text-white">{getBusinessFriendlyDisplayName(table)}</span>
-                                      </button>
+                                      <div key={`${tenant.id}-soap-${table.name}`} className="group relative">
+                                        <div
+                                          onClick={() => selectTableAndQuery(tenant, table)}
+                                          className={`w-full text-left p-2 rounded transition-colors duration-200 text-xs hover:bg-slate-700/50 hover:text-white flex items-center gap-2 cursor-pointer ${
+                                            selectedTable?.name === table.name && selectedTenant?.id === tenant.id ? 'bg-blue-500/30 text-white border border-blue-500/50' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
+                                          }`}
+                                        >
+                                          <Table className="w-3 h-3" />
+                                          <span className="text-sm font-medium flex-1 text-left text-white">{getBusinessFriendlyDisplayName(table)}</span>
+                                          
+                                          {/* Action buttons - show on hover */}
+                                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditTable(tenant.id, table, 'soap');
+                                              }}
+                                              className="p-1 hover:bg-blue-600/50 rounded transition-colors duration-200 text-blue-400 hover:text-blue-300"
+                                              title={`Edit ${table.name}`}
+                                            >
+                                              <Edit className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteTable(tenant.id, table, 'soap');
+                                              }}
+                                              className="p-1 hover:bg-red-600/50 rounded transition-colors duration-200 text-red-400 hover:text-red-300"
+                                              title={`Delete ${table.name}`}
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
                                     ))}
                                   </motion.div>
                                 )}
@@ -296,16 +406,41 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                                 >
                                   {restServices.length > 0 ? (
                                     restServices.map((table: any) => (
-                                      <button
-                                        key={`${tenant.id}-rest-${table.name}`}
-                                        onClick={() => selectTableAndQuery(tenant, table)}
-                                        className={`w-full text-left p-2 rounded transition-colors duration-200 text-xs hover:bg-slate-700/50 hover:text-white flex items-center gap-2 group ${
-                                          selectedTable?.name === table.name && selectedTenant?.id === tenant.id ? 'bg-blue-500/30 text-white border border-blue-500/50' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
-                                        }`}
-                                      >
-                                        <Table className="w-3 h-3" />
-                                        <span className="text-sm font-medium flex-1 text-left text-white">{getBusinessFriendlyDisplayName(table)}</span>
-                                      </button>
+                                      <div key={`${tenant.id}-rest-${table.name}`} className="group relative">
+                                        <div
+                                          onClick={() => selectTableAndQuery(tenant, table)}
+                                          className={`w-full text-left p-2 rounded transition-colors duration-200 text-xs hover:bg-slate-700/50 hover:text-white flex items-center gap-2 cursor-pointer ${
+                                            selectedTable?.name === table.name && selectedTenant?.id === tenant.id ? 'bg-blue-500/30 text-white border border-blue-500/50' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
+                                          }`}
+                                        >
+                                          <Table className="w-3 h-3" />
+                                          <span className="text-sm font-medium flex-1 text-left text-white">{getBusinessFriendlyDisplayName(table)}</span>
+                                          
+                                          {/* Action buttons - show on hover */}
+                                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditTable(tenant.id, table, 'rest');
+                                              }}
+                                              className="p-1 hover:bg-blue-600/50 rounded transition-colors duration-200 text-blue-400 hover:text-blue-300"
+                                              title={`Edit ${table.name}`}
+                                            >
+                                              <Edit className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteTable(tenant.id, table, 'rest');
+                                              }}
+                                              className="p-1 hover:bg-red-600/50 rounded transition-colors duration-200 text-red-400 hover:text-red-300"
+                                              title={`Delete ${table.name}`}
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
                                     ))
                                   ) : (
                                     <div className="p-2 text-xs text-slate-400 text-center">

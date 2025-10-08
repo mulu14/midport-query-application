@@ -57,15 +57,26 @@ export class Database {
   }
 
   /**
-   * Clears all databases and reinitializes with default data
+   * Creates initial sample database if none exist
+   * Safe initialization method that doesn't delete existing data
    * @static
    * @async
-   * @returns {Promise<void>}
+   * @returns {Promise<DatabaseData>} Created sample database
    * @throws {Error} If API request fails
    */
-  static async clear(): Promise<void> {
-    const response = await fetch('/api/databases/clear', { method: 'POST' });
-    if (!response.ok) throw new Error('Failed to clear databases');
+  static async createSampleDatabase(): Promise<DatabaseData> {
+    const sampleDb: DatabaseData = {
+      name: 'Sample Local Database',
+      type: 'sqlite',
+      status: 'connected',
+      tables: [
+        { name: 'customers', record_count: 3 },
+        { name: 'products', record_count: 5 },
+        { name: 'orders', record_count: 7 }
+      ]
+    };
+    
+    return await this.create(sampleDb);
   }
 
   /**

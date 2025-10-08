@@ -98,30 +98,60 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
 
       let dbList: DatabaseData[] = await response.json();
 
-      // If no databases exist, initialize with default SQLite database
+      // If no databases exist, create a safe sample database (no destructive operations)
       if (dbList.length === 0) {
+        try {
+          // Create a single sample database using the standard create API
+          const sampleDbData: DatabaseData = {
+            name: 'Sample SQLite Database',
+            type: 'sqlite',
+            status: 'connected',
+            tables: [
+              { name: 'customers', record_count: 3 },
+              { name: 'products', record_count: 5 },
+              { name: 'orders', record_count: 7 }
+            ]
+          };
 
-        const initResponse = await fetch('/api/databases/clear', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
+          const createResponse = await fetch('/api/databases', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(sampleDbData),
+          });
 
-        if (initResponse.ok) {
-          dbList = await initResponse.json();
-        } else {
-          // Fallback to static SQLite database
+          if (createResponse.ok) {
+            const newDatabase = await createResponse.json();
+            dbList = [newDatabase];
+          } else {
+            // Fallback: provide in-memory database for immediate use
+            dbList = [
+              {
+                id: 'temp-local-sqlite',
+                name: 'Temporary SQLite Database',
+                type: 'sqlite',
+                status: 'connected',
+                tables: [
+                  { name: 'customers', record_count: 3 },
+                  { name: 'products', record_count: 5 },
+                  { name: 'orders', record_count: 7 }
+                ]
+              }
+            ];
+          }
+        } catch (initError) {
+          // Safe fallback - provides basic functionality without database operations
           dbList = [
             {
-              id: 'local-sqlite',
-              name: 'Local SQLite Database',
+              id: 'fallback-db',
+              name: 'Local Database (Fallback Mode)',
               type: 'sqlite',
-              status: 'connected',
+              status: 'disconnected',
               tables: [
-                { name: 'customers', record_count: 3 },
-                { name: 'products', record_count: 5 },
-                { name: 'orders', record_count: 7 }
+                { name: 'customers', record_count: 0 },
+                { name: 'products', record_count: 0 },
+                { name: 'orders', record_count: 0 }
               ]
             }
           ];
