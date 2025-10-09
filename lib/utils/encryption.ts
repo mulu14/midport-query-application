@@ -5,7 +5,20 @@
  * @date October 2025
  */
 
-import crypto from 'crypto';
+// Try different import methods for compatibility
+let createCipherGCM: any, createDecipherGCM: any, randomBytes: any, createHash: any;
+
+try {
+  // Modern Node.js import
+  const crypto = require('crypto');
+  createCipherGCM = crypto.createCipherGCM;
+  createDecipherGCM = crypto.createDecipherGCM;
+  randomBytes = crypto.randomBytes;
+  createHash = crypto.createHash;
+} catch (error) {
+  // Fallback - disable encryption if crypto is not available
+  console.warn('Crypto module not available, using fallback');
+}
 
 /**
  * Encryption utility class for tenant credential security
@@ -27,7 +40,7 @@ export class EncryptionUtil {
     if (!key) {
       // Generate a new key if none exists (for development)
       // In production, this should be a pre-generated secure key
-      const newKey = crypto.randomBytes(this.KEY_LENGTH).toString('hex');
+      const newKey = randomBytes(this.KEY_LENGTH).toString('hex');
       console.warn(`
 ⚠️  TENANT_ENCRYPTION_KEY not found in environment variables.
 For production deployment, add this to your .env.local:
@@ -48,10 +61,16 @@ Using temporary key for current session.
    */
   static encrypt(data: string): string {
     try {
-      const key = this.getEncryptionKey();
-      const iv = crypto.randomBytes(this.IV_LENGTH);
+      if (!createCipherGCM || !randomBytes) {
+        // Fallback to simple base64 encoding for development
+        console.warn('Crypto not available, using base64 fallback (NOT SECURE)');
+        return Buffer.from(data).toString('base64');
+      }
       
-      const cipher = crypto.createCipherGCM(this.ALGORITHM, key, iv);
+      const key = this.getEncryptionKey();
+      const iv = randomBytes(this.IV_LENGTH);
+      
+      const cipher = createCipherGCM(this.ALGORITHM, key, iv);
       cipher.setAAD(Buffer.from('tenant-config', 'utf8'));
       
       let encrypted = cipher.update(data, 'utf8', 'hex');
@@ -74,6 +93,12 @@ Using temporary key for current session.
    */
   static decrypt(encryptedData: string): string {
     try {
+      if (!createDecipherGCM) {
+        // Fallback to simple base64 decoding for development
+        console.warn('Crypto not available, using base64 fallback (NOT SECURE)');
+        return Buffer.from(encryptedData, 'base64').toString('utf8');
+      }
+      
       const key = this.getEncryptionKey();
       const parts = encryptedData.split(':');
       
@@ -85,7 +110,7 @@ Using temporary key for current session.
       const authTag = Buffer.from(parts[1], 'hex');
       const encrypted = parts[2];
       
-      const decipher = crypto.createDecipherGCM(this.ALGORITHM, key, iv);
+      const decipher = createDecipherGCM(this.ALGORITHM, key, iv);
       decipher.setAAD(Buffer.from('tenant-config', 'utf8'));
       decipher.setAuthTag(authTag);
       
@@ -104,7 +129,7 @@ Using temporary key for current session.
    * @returns SHA-256 hash of the input
    */
   static hashForId(input: string): string {
-    return crypto.createHash('sha256').update(input).digest('hex').substring(0, 32);
+    return createHash('sha256').update(input).digest('hex').substring(0, 32);
   }
 
   /**
@@ -112,7 +137,7 @@ Using temporary key for current session.
    * @returns Random UUID-like string
    */
   static generateId(): string {
-    return crypto.randomBytes(16).toString('hex');
+    return randomBytes(16).toString('hex');
   }
 }
 

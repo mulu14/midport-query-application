@@ -99,7 +99,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     };
 
-    const createdTenant = await TenantConfigManager.createTenant(newTenantConfig);
+    const createdTenant = await TenantConfigManager.createTenantCredential(newTenantConfig);
     
     return NextResponse.json(createdTenant, { status: 201 });
   } catch (error) {

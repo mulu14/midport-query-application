@@ -26,6 +26,7 @@ export function CredentialFormDialog({ open, credential, onClose, onSuccess }: C
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSensitive, setShowSensitive] = useState(false);
+  const [showServiceAccountSensitive, setShowServiceAccountSensitive] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -221,7 +222,20 @@ export function CredentialFormDialog({ open, credential, onClose, onSuccess }: C
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save credentials');
+        console.error('API Error:', errorData);
+        
+        // Show detailed validation errors if available
+        let errorMessage = errorData.message || errorData.error || 'Failed to save credentials';
+        
+        if (errorData.missingFields && errorData.missingFields.length > 0) {
+          errorMessage += `\n\nMissing fields: ${errorData.missingFields.join(', ')}`;
+        }
+        
+        if (errorData.missingIonFields && errorData.missingIonFields.length > 0) {
+          errorMessage += `\n\nMissing ION config fields: ${errorData.missingIonFields.join(', ')}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       onSuccess();
@@ -236,8 +250,8 @@ export function CredentialFormDialog({ open, credential, onClose, onSuccess }: C
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 p-2 sm:p-4 overflow-y-auto">
-      <div className="rounded-lg shadow-2xl border border-white/20 w-full max-w-4xl min-h-[90vh] sm:min-h-0 sm:max-h-[90vh] my-4 sm:my-8 flex flex-col" style={{backgroundColor: '#004766'}}>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="rounded-lg shadow-2xl border border-white/20 w-full max-w-4xl max-h-[85vh] flex flex-col" style={{backgroundColor: '#004766'}}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-white/20 shrink-0 rounded-t-lg" style={{backgroundColor: '#004766'}}>
           <h2 className="text-lg sm:text-xl font-semibold text-white">
@@ -257,9 +271,9 @@ export function CredentialFormDialog({ open, credential, onClose, onSuccess }: C
             {/* Error Display */}
             {error && (
               <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4">
-                <div className="flex items-center space-x-2">
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                  <span className="text-red-100">{error}</span>
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                  <div className="text-red-100 whitespace-pre-line">{error}</div>
                 </div>
               </div>
             )}
@@ -276,7 +290,7 @@ export function CredentialFormDialog({ open, credential, onClose, onSuccess }: C
                     type="text"
                     value={formData.tenantName}
                     onChange={(e) => updateField('tenantName', e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006da3] focus:border-[#006da3] transition-colors"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     placeholder="e.g., MIDPORT_DEM"
                   />
                 {validationErrors.tenantName && (
@@ -293,7 +307,7 @@ export function CredentialFormDialog({ open, credential, onClose, onSuccess }: C
                     type="text"
                     value={formData.environmentVersion}
                     onChange={(e) => updateField('environmentVersion', e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006da3] focus:border-[#006da3] transition-colors"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     placeholder="e.g., V1480769020"
                   />
                 </div>
@@ -434,40 +448,6 @@ export function CredentialFormDialog({ open, credential, onClose, onSuccess }: C
                 </div>
               </div>
 
-              {/* Service Account Keys */}
-              <div className="grid grid-cols-1 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Service Account Access Key <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type={showSensitive ? "text" : "password"}
-                    value={formData.ionConfig.serviceAccountAccessKey}
-                    onChange={(e) => updateField('ionConfig.serviceAccountAccessKey', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                    placeholder="e.g., MIDPORT_DEM#YuBQLph3IgLAtSECaW9IJzlO0Bkag0UF10MqI2EPmVaB6dEyjnwTGF6Y67f-VEgYLL5SgXgKRfk7nF_OXcozpA"
-                  />
-                  {validationErrors['ionConfig.serviceAccountAccessKey'] && (
-                    <p className="text-red-400 text-sm mt-1">{validationErrors['ionConfig.serviceAccountAccessKey']}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Service Account Secret Key <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type={showSensitive ? "text" : "password"}
-                    value={formData.ionConfig.serviceAccountSecretKey}
-                    onChange={(e) => updateField('ionConfig.serviceAccountSecretKey', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                    placeholder="Service account secret key"
-                  />
-                  {validationErrors['ionConfig.serviceAccountSecretKey'] && (
-                    <p className="text-red-400 text-sm mt-1">{validationErrors['ionConfig.serviceAccountSecretKey']}</p>
-                  )}
-                </div>
-              </div>
 
               {/* OAuth2 Endpoints */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -584,10 +564,71 @@ export function CredentialFormDialog({ open, credential, onClose, onSuccess }: C
                 </div>
               </div>
             </div>
+
+            {/* Service Account Configuration */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-white">Service Account Configuration</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowServiceAccountSensitive(!showServiceAccountSensitive)}
+                  className="flex items-center space-x-2 text-sm text-gray-200 hover:text-white"
+                >
+                  {showServiceAccountSensitive ? (
+                    <>
+                      <EyeOff className="w-4 h-4" />
+                      <span>Hide sensitive fields</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-4 h-4" />
+                      <span>Show sensitive fields</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Service Account Keys */}
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Service Account Access Key <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type={showServiceAccountSensitive ? "text" : "password"}
+                    value={formData.ionConfig.serviceAccountAccessKey}
+                    onChange={(e) => updateField('ionConfig.serviceAccountAccessKey', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                    placeholder="e.g., MIDPORT_DEM#YuBQLph3IgLAtSECaW9IJzlO0Bkag0UF10MqI2EPmVaB6dEyjnwTGF6Y67f-VEgYLL5SgXgKRfk7nF_OXcozpA"
+                  />
+                  {validationErrors['ionConfig.serviceAccountAccessKey'] && (
+                    <p className="text-red-400 text-sm mt-1">{validationErrors['ionConfig.serviceAccountAccessKey']}</p>
+                  )}
+                  <p className="text-slate-400 text-xs mt-1">Service account access key for ION API authentication</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Service Account Secret Key <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type={showServiceAccountSensitive ? "text" : "password"}
+                    value={formData.ionConfig.serviceAccountSecretKey}
+                    onChange={(e) => updateField('ionConfig.serviceAccountSecretKey', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                    placeholder="Service account secret key"
+                  />
+                  {validationErrors['ionConfig.serviceAccountSecretKey'] && (
+                    <p className="text-red-400 text-sm mt-1">{validationErrors['ionConfig.serviceAccountSecretKey']}</p>
+                  )}
+                  <p className="text-slate-400 text-xs mt-1">Service account secret key for secure API access</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-end space-x-3 sm:space-x-4 p-4 sm:p-6 border-t border-white/20 shrink-0 rounded-b-lg" style={{backgroundColor: '#004766'}}>
+          <div className="flex items-center justify-end space-x-3 sm:space-x-4 p-4 sm:p-6 border-t border-white/20 shrink-0 bg-[#004766] rounded-b-lg">
             <Button
               type="button"
               onClick={onClose}

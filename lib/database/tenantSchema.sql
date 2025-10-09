@@ -1,10 +1,10 @@
--- Tenant Configuration Database Schema
+-- Tenant Credentials Database Schema
 -- SQLite schema for storing multi-tenant ION API credentials
 -- Author: Mulugeta Forsido
 -- Date: October 2025
 
--- Table for storing tenant configurations
-CREATE TABLE IF NOT EXISTS tenant_configs (
+-- Table for storing tenant credentials
+CREATE TABLE IF NOT EXISTS tenant_credentials (
     id TEXT PRIMARY KEY NOT NULL,
     tenant_name TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
@@ -13,14 +13,31 @@ CREATE TABLE IF NOT EXISTS tenant_configs (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    -- Encrypted ION API configuration (JSON string)
-    encrypted_ion_config TEXT NOT NULL
+    -- Non-sensitive ION API configuration (plain text)
+    identity_url TEXT,
+    portal_url TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    token_endpoint TEXT,
+    authorization_endpoint TEXT,
+    revoke_endpoint TEXT,
+    scope TEXT,
+    version TEXT,
+    client_name TEXT,
+    data_type TEXT,
+    ln_company TEXT,
+    ln_identity TEXT,
+    
+    -- Encrypted sensitive fields (individually encrypted)
+    encrypted_client_id TEXT NOT NULL,
+    encrypted_client_secret TEXT NOT NULL,
+    encrypted_service_account_access_key TEXT NOT NULL,
+    encrypted_service_account_secret_key TEXT NOT NULL
 );
 
 -- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_tenant_configs_tenant_name ON tenant_configs(tenant_name);
-CREATE INDEX IF NOT EXISTS idx_tenant_configs_is_active ON tenant_configs(is_active);
-CREATE INDEX IF NOT EXISTS idx_tenant_configs_created_at ON tenant_configs(created_at);
+CREATE INDEX IF NOT EXISTS idx_tenant_credentials_tenant_name ON tenant_credentials(tenant_name);
+CREATE INDEX IF NOT EXISTS idx_tenant_credentials_is_active ON tenant_credentials(is_active);
+CREATE INDEX IF NOT EXISTS idx_tenant_credentials_created_at ON tenant_credentials(created_at);
 
 -- Table for storing tenant connection status and health checks
 CREATE TABLE IF NOT EXISTS tenant_health_checks (
@@ -31,7 +48,7 @@ CREATE TABLE IF NOT EXISTS tenant_health_checks (
     error_message TEXT,
     checked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (tenant_id) REFERENCES tenant_configs(id) ON DELETE CASCADE
+    FOREIGN KEY (tenant_id) REFERENCES tenant_credentials(id) ON DELETE CASCADE
 );
 
 -- Create index for health checks
@@ -48,19 +65,19 @@ CREATE TABLE IF NOT EXISTS tenant_oauth_tokens (
     scope TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (tenant_id) REFERENCES tenant_configs(id) ON DELETE CASCADE
+    FOREIGN KEY (tenant_id) REFERENCES tenant_credentials(id) ON DELETE CASCADE
 );
 
 -- Trigger to update the updated_at timestamp
-CREATE TRIGGER IF NOT EXISTS update_tenant_configs_timestamp 
-    AFTER UPDATE ON tenant_configs
+CREATE TRIGGER IF NOT EXISTS update_tenant_credentials_timestamp 
+    AFTER UPDATE ON tenant_credentials
 BEGIN
-    UPDATE tenant_configs SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    UPDATE tenant_credentials SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
 
 -- Sample data structure (commented out - will be inserted via code)
 /*
-INSERT INTO tenant_configs (
+INSERT INTO tenant_credentials (
     id, 
     tenant_name, 
     display_name, 

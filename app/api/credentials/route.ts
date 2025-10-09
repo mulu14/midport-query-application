@@ -46,7 +46,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body = await request.json();
     
     // Validate required fields
-    const requiredFields = ['tenantName', 'displayName', 'ionConfig'];
+    const requiredFields = ['tenantName', 'ionConfig'];
     const missingFields = requiredFields.filter(field => !body[field]);
     
     if (missingFields.length > 0) {
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const newTenantConfig: NewTenantConfig = {
       tenantName: body.tenantName,
-      displayName: body.displayName,
+      displayName: body.tenantName, // Use tenantName as displayName
       environmentVersion: body.environmentVersion,
       ionConfig: {
         clientId: body.ionConfig.clientId,
@@ -95,11 +95,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         scope: body.ionConfig.scope || 'read write',
         version: body.ionConfig.version || '1.0',
         clientName: body.ionConfig.clientName || '',
-        dataType: body.ionConfig.dataType || '12'
+        dataType: body.ionConfig.dataType || '12',
+        lnCompany: body.ionConfig.lnCompany || '',
+        lnIdentity: body.ionConfig.lnIdentity || ''
       }
     };
 
-    const createdTenant = await TenantConfigManager.createTenant(newTenantConfig);
+    const createdTenant = await TenantConfigManager.createTenantCredential(newTenantConfig);
     
     return NextResponse.json(createdTenant, { status: 201 });
   } catch (error) {
