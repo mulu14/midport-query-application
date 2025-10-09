@@ -51,8 +51,8 @@ export default function QueryPlatform() {
         <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-2">
           {mode === 'remote' ? 'Remote API Query Platform' : 'SQL Query Platform'}
         </h1>
-        <div className="w-16 sm:w-20 h-1 bg-gradient-to-r from-blue-400 to-blue-500 rounded-full"></div>
-        <p className="text-slate-300 mt-2 lg:mt-4 text-sm sm:text-base lg:text-lg">
+        <div className="w-16 sm:w-20 h-1 bg-white/80 rounded-full"></div>
+        <p className="text-gray-200 mt-2 lg:mt-4 text-sm sm:text-base lg:text-lg">
           {mode === 'remote' ? (
             selectedTenant
               ? `Connected to: ${selectedTenant.name} (${selectedTenant.status})`

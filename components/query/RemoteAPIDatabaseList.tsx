@@ -8,6 +8,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { Table, ChevronDown, ChevronRight, Globe, Server, Plus, Edit, Trash2, Code2, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,9 @@ interface RemoteAPIDatabaseListProps {
  * @returns {JSX.Element} Remote API database list interface with expandable tenant items
  */
 export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDatabaseListProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  
   const {
     tenants,
     selectedTenant,
@@ -179,52 +183,103 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
    * @param {any} table - The table/service object
    * @returns {string} Business-friendly display name
    */
+  /**
+   * Handles table selection with navigation logic
+   * If on /credentials route, navigate to home page first
+   * @param {any} tenant - The tenant object
+   * @param {any} table - The table object to select
+   */
+  const handleTableSelection = (tenant: any, table: any) => {
+    // If currently on credentials page, navigate to home first
+    if (pathname === '/credentials') {
+      router.push('/');
+    }
+    
+    // Then select the table and query
+    selectTableAndQuery(tenant, table);
+  };
+
+  /**
+   * Converts technical service names to business-friendly display names
+   * @param {any} table - The table/service object
+   * @returns {string} Business-friendly display name
+   */
   const getBusinessFriendlyDisplayName = (table: any): string => {
     const serviceName = table.name || table.endpoint;
     
-    // Handle OData REST services (e.g., "tdapi.slsSalesOrder/Orders" -> "Sales Orders")
+    // Handle REST services with URL paths
     if (serviceName.includes('/')) {
       const parts = serviceName.split('/');
-      const entityName = parts[parts.length - 1]; // Get the entity name after the last /
+      let entityName = parts[parts.length - 1]; // Last segment (e.g., "Orders")
       
-      // Convert entity names to readable format
-      const entityDisplayMap: Record<string, string> = {
-        'Orders': 'Sales Orders',
-        'SalesOrders': 'Sales Orders',
-        'Employees': 'Employees',
-        'Customers': 'Customers',
-        'BusinessPartners': 'Business Partners',
-        'Items': 'Items',
-        'Products': 'Products',
-        'Accounts': 'Accounts',
-        'Invoices': 'Invoices'
-      };
+      // Simple approach: remove first 9 characters from service URL segment
+      // Handle patterns like "tdapi.slsSalesOrder" or "tcapi.comEmployeeMasterData" 
+      if (parts.length >= 3) {
+        const serviceSegment = parts[2]; // Third segment: tdapi.slsSalesOrder
+        
+        // Check for API service definitions with dot notation and sufficient length
+        if (serviceSegment.includes('.') && serviceSegment.length > 9) {
+          // Remove first 9 characters (e.g., "tdapi.sls" or "tcapi.com")
+          const businessContext = serviceSegment.substring(9);
+          
+          // Convert business context to readable format
+          const readableContext = businessContext
+            .replace(/([a-z])([A-Z])/g, '$1 $2') // Add space between lowercase and uppercase
+            .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2') // Add space between consecutive capitals
+            .replace(/^./, (str: string) => str.toUpperCase()) // Capitalize first letter
+            .trim();
+          
+          // Convert entity name to readable format  
+          const readableEntity = entityName
+            .replace(/([a-z])([A-Z])/g, '$1 $2')
+            .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+            .replace(/^./, (str: string) => str.toUpperCase())
+            .trim();
+          
+          // Just return the business context to avoid duplication
+          // "Purchase Order" is more descriptive than "Purchase Order Orders"
+          return readableContext || readableEntity;
+        }
+      }
       
-      return entityDisplayMap[entityName] || entityName;
+      // Fallback: just format the entity name
+      return entityName
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+        .replace(/^./, (str: string) => str.toUpperCase())
+        .trim();
     }
     
-    // Handle SOAP services - convert technical names to business names
-    const businessNameMap: Record<string, string> = {
-      'BusinessPartner_v3': 'Business Partners',
-      'ServiceCall_v2': 'Service Calls', 
-      'ATPService_WT': 'Available to Promise',
-      'SalesOrder': 'Sales Orders',
-      'Customer_v1': 'Customers',
-      'Item_v1': 'Items',
-      'Address_v1': 'Addresses'
-    };
+    // Handle SOAP services - convert technical names using pattern matching
+    if (serviceName.includes('_v') || serviceName.includes('_WT')) {
+      // Extract the base name before version or suffix
+      const baseName = serviceName.replace(/_v\d+$|_WT$/, '');
+      
+      // Convert camelCase/PascalCase to readable format
+      const readable = baseName
+        .replace(/([a-z])([A-Z])/g, '$1 $2') // Add space between lowercase and uppercase
+        .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2') // Add space between consecutive capitals
+        .replace(/^./, (str: string) => str.toUpperCase()) // Capitalize first letter
+        .trim();
+      
+      return readable;
+    }
     
-    // Return business-friendly name or fallback to original
-    return businessNameMap[serviceName] || serviceName;
+    // For any other format, try to make it readable
+    return serviceName
+      .replace(/([a-z])([A-Z])/g, '$1 $2') // Add space between lowercase and uppercase
+      .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2') // Add space between consecutive capitals
+      .replace(/^./, (str: string) => str.toUpperCase()) // Capitalize first letter
+      .trim();
   };
 
   return (
-    <div className="h-full bg-gradient-to-b from-slate-800/90 to-slate-900/90 border-b lg:border-r border-slate-600/50 backdrop-blur-xl flex flex-col">
-      <div className="p-3 lg:p-4 border-b border-slate-600/50 bg-slate-800/50">
+    <div className="h-full border-b lg:border-r border-white/20 backdrop-blur-xl flex flex-col" style={{backgroundColor: '#004766'}}>
+      <div className="p-3 lg:p-4 border-b border-white/20" style={{backgroundColor: '#004766'}}>
         <div className="flex items-center gap-2">
-          <Globe className="w-5 h-5 text-blue-400" />
+          <Globe className="w-5 h-5 text-white" />
           <h2 className="font-bold text-white text-sm lg:text-base tracking-wide">REMOTE API</h2>
-          <span className="text-[#8bb3cc] text-xs">Query Platform</span>
+          <span className="text-gray-200 text-xs">Query Platform</span>
         </div>
       </div>
 
@@ -234,9 +289,11 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
           tenants.map((tenant) => (
             <div key={tenant.id} className="mb-1">
               {/* Tenant Header */}
-              <div className={`p-2 rounded transition-colors duration-200 group ${
-                selectedTenant?.id === tenant.id ? 'bg-blue-500/20 text-blue-300 border border-blue-400/30' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
-              }`}>
+              <div className={`p-2 rounded transition-colors duration-200 group hover:bg-white/10 ${
+                selectedTenant?.id === tenant.id ? 'text-white border border-white/30' : 'text-gray-200 hover:text-white'
+              }`} style={{
+                backgroundColor: selectedTenant?.id === tenant.id ? 'rgba(0, 109, 163, 0.3)' : 'transparent'
+              }}>
                 <div className="flex items-center justify-between">
                   <button
                     onClick={() => {
@@ -262,7 +319,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                         e.stopPropagation();
                         handleEditTenant(tenant);
                       }}
-                      className="p-1 hover:bg-slate-600/50 rounded transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                      className="p-1 hover:bg-white/20 rounded transition-colors duration-200 opacity-0 group-hover:opacity-100"
                       title="Edit tenant"
                     >
                       <Edit className="w-3 h-3" />
@@ -273,7 +330,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                         e.stopPropagation();
                         handleDeleteTenant(tenant.id, tenant.name);
                       }}
-                      className="p-1 hover:bg-red-600/50 rounded transition-colors duration-200 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300"
+                      className="p-1 hover:bg-red-500/30 rounded transition-colors duration-200 opacity-0 group-hover:opacity-100 text-red-300 hover:text-red-200"
                       title="Delete tenant"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -284,7 +341,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                         e.stopPropagation();
                         toggleTenant(tenant.id);
                       }}
-                      className="p-1 hover:bg-slate-600/50 rounded transition-colors duration-200"
+                      className="p-1 hover:bg-white/20 rounded transition-colors duration-200"
                     >
                       {expandedTenants.includes(tenant.id) ? (
                         <ChevronDown className="w-3 h-3" />
@@ -303,7 +360,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="ml-4 space-y-1 border-l border-slate-600/30 pl-3"
+                    className="space-y-1 border border-white/30 rounded-lg p-2 bg-black/20"
                   >
                     {(() => {
                       // Group services by API type
@@ -340,7 +397,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                                     {soapServices.map((table: any) => (
                                       <div key={`${tenant.id}-soap-${table.name}`} className="group relative">
                                         <div
-                                          onClick={() => selectTableAndQuery(tenant, table)}
+                                          onClick={() => handleTableSelection(tenant, table)}
                                           className={`w-full text-left p-2 rounded transition-colors duration-200 text-xs hover:bg-slate-700/50 hover:text-white flex items-center gap-2 cursor-pointer ${
                                             selectedTable?.name === table.name && selectedTenant?.id === tenant.id ? 'bg-blue-500/30 text-white border border-blue-500/50' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
                                           }`}
@@ -408,7 +465,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                                     restServices.map((table: any) => (
                                       <div key={`${tenant.id}-rest-${table.name}`} className="group relative">
                                         <div
-                                          onClick={() => selectTableAndQuery(tenant, table)}
+                                          onClick={() => handleTableSelection(tenant, table)}
                                           className={`w-full text-left p-2 rounded transition-colors duration-200 text-xs hover:bg-slate-700/50 hover:text-white flex items-center gap-2 cursor-pointer ${
                                             selectedTable?.name === table.name && selectedTenant?.id === tenant.id ? 'bg-blue-500/30 text-white border border-blue-500/50' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
                                           }`}

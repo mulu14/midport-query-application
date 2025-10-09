@@ -21,3 +21,13 @@ export type { OrderData } from './Order';
 export { Database } from './Database';
 export type { DatabaseData } from './Database';
 export type { DatabaseTable } from './DatabaseTable';
+
+// Tenant configuration entity exports
+export type { 
+  TenantConfig, 
+  NewTenantConfig, 
+  TenantSummary, 
+  TenantConfigValidation,
+  EncryptedTenantConfig,
+  IONAPIConfig 
+} from './TenantConfig';

@@ -12,6 +12,7 @@ import { DatabaseProvider } from '@/lib/DatabaseContext';
 import { RemoteAPIProvider } from '@/lib/RemoteAPIContext';
 import { SidebarModeProvider } from '@/lib/SidebarModeContext';
 import { DatabaseSidebar } from '@/components/layout/DatabaseSidebar';
+import { NavigationHeader } from '@/components/layout/NavigationHeader';
 import Footer from '@/components/layout/Footer';
 
 /**
@@ -63,12 +64,14 @@ export default function RootLayout({
         <SidebarModeProvider>
           <DatabaseProvider>
             <RemoteAPIProvider>
-              <div className="min-h-screen flex flex-col bg-[#237790] relative">
-                {/* Circuit board background pattern */}
-                <div className="absolute inset-0 opacity-10">
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,#00ffff_1px,transparent_0)] bg-[size:20px_20px]"></div>
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,#00ff88_1px,transparent_0)] bg-[size:40px_40px] opacity-50"></div>
+              <div className="min-h-screen flex flex-col relative" style={{backgroundColor: '#004766'}}>
+                {/* Subtle pattern overlay */}
+                <div className="absolute inset-0 opacity-5">
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,#ffffff_1px,transparent_0)] bg-[size:20px_20px]"></div>
                 </div>
+
+                {/* Navigation Header */}
+                <NavigationHeader />
 
                 {/* Main layout */}
                 <div className="relative z-10 flex flex-col lg:flex-row flex-1 min-h-0">
@@ -80,7 +83,7 @@ export default function RootLayout({
                   </div>
 
                   {/* Main content area */}
-                  <div className="flex-1 overflow-auto backdrop-blur-sm bg-black/10 min-h-0">
+                  <div className="flex-1 overflow-auto min-h-0" style={{backgroundColor: 'rgba(0, 71, 102, 0.95)'}}>
                     {children}
                   </div>
                 </div>

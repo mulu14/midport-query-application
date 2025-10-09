@@ -230,33 +230,31 @@ export class RemoteAPIManager {
 
 
   /**
-   * Get list of available ION API tenants and their services
+   * Get list of available ION API tenants and their services from credentials
+   * @deprecated This function is legacy - use TenantConfigManager directly for credential management
    */
   static async getTenants(): Promise<RemoteAPITenant[]> {
-    // In a real implementation, this would fetch from ION API discovery endpoint
-    // For Phase One, return hardcoded tenants with available services
-    return [
-      {
-        id: 'midport_dem',
-        name: 'MIDPORT_DEM',
-        status: 'connected',
-        tables: [ // Actually ION API services
-          { name: 'ServiceCall_v2', endpoint: 'ServiceCall_v2' },
-          { name: 'Customer_v1', endpoint: 'Customer_v1' },
-          { name: 'Order_v1', endpoint: 'Order_v1' }
-        ]
-      },
-      {
-        id: 'midport_prod',
-        name: 'MIDPORT_PROD',
-        status: 'connected',
-        tables: [ // Actually ION API services
-          { name: 'ServiceCall_v2', endpoint: 'ServiceCall_v2' },
-          { name: 'Customer_v1', endpoint: 'Customer_v1' },
-          { name: 'Product_v1', endpoint: 'Product_v1' }
-        ]
-      }
-    ];
+    try {
+      // Import TenantConfigManager dynamically to avoid circular dependencies
+      const { TenantConfigManager } = await import('./TenantConfigManager');
+      
+      // Get all active tenant credentials
+      const credentials = await TenantConfigManager.getAllTenants();
+      
+      // Convert credentials to RemoteAPITenant format
+      return credentials
+        .filter((cred) => cred.isActive) // Only include active credentials
+        .map((cred) => ({
+          id: cred.id,
+          name: cred.tenantName,
+          status: 'connected', // Default status - could be enhanced with health checks
+          tables: [] // Services should be discovered dynamically per tenant
+        }));
+    } catch (error) {
+      console.error('Error fetching tenants from TenantConfigManager:', error);
+      // Fallback to empty array if credential fetch fails
+      return [];
+    }
   }
 
   /**
@@ -391,19 +389,31 @@ export class RemoteAPIManager {
   }
 
   /**
-   * Generate a sample ION API request configuration (for demo purposes)
+   * Generate a real ION API request configuration from tenant credentials
+   * @param service - The service/table to generate a query for
+   * @param tenantConfig - The tenant configuration with credentials
    */
-  static generateSampleQuery(service: RemoteAPITable): SOAPRequestConfig {
+  static generateQueryFromCredential(
+    service: RemoteAPITable,
+    tenantConfig: { tenantName: string; ionConfig: { portalUrl: string; lnCompany?: string } }
+  ): SOAPRequestConfig {
+    // Extract base URL from portal URL
+    // Portal URL format: https://mingle-sso.eu1.inforcloudsuite.com:443/TENANT/as/
+    // We need: https://mingle-ionapi.eu1.inforcloudsuite.com
+    const baseUrl = tenantConfig.ionConfig.portalUrl
+      .replace('-sso.', '-ionapi.') // Replace SSO with ION API
+      .replace(':443', '') // Remove port
+      .replace(/\/[^/]+\/as\/$/, ''); // Remove tenant and /as/ path
+    
     return {
-      tenant: 'MIDPORT_DEM', // Default tenant
-      table: service.endpoint, // Service endpoint like 'ServiceCall_v2'
-      action: 'List', // Default action for ION API services
-      parameters: {
-        // Add default parameters if needed for the service
-      },
-      sqlQuery: `SELECT * FROM ${service.endpoint}`, // Sample SQL query
-      fullUrl: `https://mingle-ionapi.eu1.inforcloudsuite.com/MIDPORT_DEM/LN/c4ws/services/${service.endpoint}`, // Full ION API URL
-      company: '' // Company code (empty for sample)
+      tenant: tenantConfig.tenantName,
+      table: service.endpoint,
+      action: 'List',
+      parameters: {},
+      sqlQuery: `SELECT * FROM ${service.endpoint}`,
+      fullUrl: `${baseUrl}/${tenantConfig.tenantName}/LN/c4ws/services/${service.endpoint}`,
+      company: tenantConfig.ionConfig.lnCompany || '', // Use configured company or empty
+      apiType: 'soap' // SOAP API type
     };
   }
 }

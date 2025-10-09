@@ -1,25 +1,28 @@
 /**
- * @fileoverview OAuth2 Configuration Manager for ION API
+ * @fileoverview OAuth2 Configuration Manager for ION API (Multi-tenant support)
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
  * @date October 2025
  */
 
 import type { OAuth2Config, OAuth2TokenResponse, StoredOAuth2Token } from '@/Entities/RemoteAPI';
+import type { TenantConfig, IONAPIConfig } from '@/Entities/TenantConfig';
+import { TenantConfigManager } from '@/lib/TenantConfigManager';
 import { config as loadDotenv } from 'dotenv';
 import path from 'path';
 
 /**
- * OAuth2 Configuration Manager for ION API
- * Handles loading configuration from environment variables and managing OAuth2 tokens
+ * OAuth2 Configuration Manager for ION API (Multi-tenant support)
+ * Handles loading configuration from environment variables or tenant database and managing OAuth2 tokens
  * @class OAuth2ConfigManager
  */
 export class OAuth2ConfigManager {
   /**
-   * Load OAuth2 configuration from environment variables
+   * Load OAuth2 configuration from environment variables (legacy method)
    * @static
    * @returns {OAuth2Config} OAuth2 configuration object
    * @throws {Error} If required environment variables are missing
+   * @deprecated Use loadConfigFromTenant instead for multi-tenant support
    */
   static loadConfigFromEnv(): OAuth2Config {
     // Safety check for browser environment
@@ -82,9 +85,60 @@ Missing variables: ${missingVars.join(', ')}`;
       clientSecret: process.env.ION_CLIENT_SECRET!,
       username: process.env.ION_SERVICE_ACCOUNT_ACCESS_KEY!, // Service Account Access Key
       password: process.env.ION_SERVICE_ACCOUNT_SECRET_KEY!, // Service Account Secret Key
-      tokenEndpoint: `${process.env.ION_PORTAL_URL}${process.env.ION_TOKEN_ENDPOINT}`
+      tokenEndpoint: `${process.env.ION_PORTAL_URL}${process.env.ION_TOKEN_ENDPOINT}`,
+      scope: process.env.ION_SCOPE
       // Note: scope not needed for ION API password grant
     };
+  }
+
+  /**
+   * Load OAuth2 configuration from tenant database
+   * @static
+   * @async
+   * @param {string} tenantId - Tenant identifier
+   * @returns {Promise<OAuth2Config>} OAuth2 configuration object
+   * @throws {Error} If tenant not found or configuration is invalid
+   */
+  static async loadConfigFromTenant(tenantId: string): Promise<OAuth2Config> {
+    try {
+      const tenantConfig = await TenantConfigManager.getTenantById(tenantId);
+      if (!tenantConfig) {
+        throw new Error(`Tenant configuration not found for ID: ${tenantId}`);
+      }
+
+      if (!tenantConfig.isActive) {
+        throw new Error(`Tenant ${tenantConfig.tenantName} is not active`);
+      }
+
+      return TenantConfigManager.ionConfigToOAuth2Config(tenantConfig.ionConfig);
+    } catch (error) {
+      throw new Error(`Failed to load tenant configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Load OAuth2 configuration from tenant database by tenant name
+   * @static
+   * @async
+   * @param {string} tenantName - Tenant name (e.g., "MIDPORT_DEM")
+   * @returns {Promise<OAuth2Config>} OAuth2 configuration object
+   * @throws {Error} If tenant not found or configuration is invalid
+   */
+  static async loadConfigFromTenantName(tenantName: string): Promise<OAuth2Config> {
+    try {
+      const tenantConfig = await TenantConfigManager.getTenantByName(tenantName);
+      if (!tenantConfig) {
+        throw new Error(`Tenant configuration not found for name: ${tenantName}`);
+      }
+
+      if (!tenantConfig.isActive) {
+        throw new Error(`Tenant ${tenantConfig.tenantName} is not active`);
+      }
+
+      return TenantConfigManager.ionConfigToOAuth2Config(tenantConfig.ionConfig);
+    } catch (error) {
+      throw new Error(`Failed to load tenant configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
 
@@ -93,13 +147,14 @@ Missing variables: ${missingVars.join(', ')}`;
    * @static
    * @async
    * @param {OAuth2Config} config - OAuth2 configuration
+   * @param {string} [tenantId] - Optional tenant ID for token caching
    * @returns {Promise<StoredOAuth2Token>} Stored OAuth2 token
    * @throws {Error} If token acquisition fails
    */
-  static async getAccessToken(config: OAuth2Config): Promise<StoredOAuth2Token> {
+  static async getAccessToken(config: OAuth2Config, tenantId?: string): Promise<StoredOAuth2Token> {
     try {
-      // Explicitly construct the token endpoint URL
-      const tokenEndpoint = `${process.env.ION_PORTAL_URL}${process.env.ION_TOKEN_ENDPOINT}`;
+      // Use the token endpoint from the config parameter
+      const tokenEndpoint = config.tokenEndpoint;
       
       // Verify service account and client ID match the same tenant
       const clientTenant = config.clientId.split('~')[0];
@@ -146,6 +201,16 @@ Missing variables: ${missingVars.join(', ')}`;
         refreshToken: tokenResponse.refresh_token,
         scope: tokenResponse.scope
       };
+
+      // Cache token if tenant ID is provided
+      if (tenantId) {
+        try {
+          await TenantConfigManager.cacheToken(tenantId, storedToken);
+        } catch (cacheError) {
+          // Non-fatal error - log and continue
+          console.warn(`Failed to cache token for tenant ${tenantId}:`, cacheError);
+        }
+      }
 
       return storedToken;
 
@@ -232,20 +297,66 @@ Missing variables: ${missingVars.join(', ')}`;
   }
 
   /**
-   * Get or refresh token as needed
+   * Get or refresh token as needed (with tenant support)
    * @static
    * @async
    * @param {StoredOAuth2Token | null} currentToken - Current token (if any)
    * @param {OAuth2Config} config - OAuth2 configuration
+   * @param {string} [tenantId] - Optional tenant ID for token caching
    * @returns {Promise<StoredOAuth2Token>} Valid token
    */
-  static async getValidToken(currentToken: StoredOAuth2Token | null, config: OAuth2Config): Promise<StoredOAuth2Token> {
+  static async getValidToken(currentToken: StoredOAuth2Token | null, config: OAuth2Config, tenantId?: string): Promise<StoredOAuth2Token> {
     // If no token or token is invalid, get a new one
     if (!currentToken || !this.isTokenValid(currentToken)) {
-      return await this.getAccessToken(config);
+      return await this.getAccessToken(config, tenantId);
     }
 
     // If token is valid, return it
     return currentToken;
+  }
+
+  /**
+   * Get valid token for a specific tenant (with caching)
+   * @static
+   * @async
+   * @param {string} tenantId - Tenant identifier
+   * @returns {Promise<StoredOAuth2Token>} Valid token
+   * @throws {Error} If tenant not found or token acquisition fails
+   */
+  static async getValidTokenForTenant(tenantId: string): Promise<StoredOAuth2Token> {
+    try {
+      // Try to get cached token first
+      const cachedToken = await TenantConfigManager.getCachedToken(tenantId);
+      
+      // Load tenant configuration
+      const config = await this.loadConfigFromTenant(tenantId);
+      
+      // Get or refresh token as needed
+      return await this.getValidToken(cachedToken, config, tenantId);
+    } catch (error) {
+      throw new Error(`Failed to get token for tenant ${tenantId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get valid token for a tenant by name (with caching)
+   * @static
+   * @async
+   * @param {string} tenantName - Tenant name (e.g., "MIDPORT_DEM")
+   * @returns {Promise<StoredOAuth2Token>} Valid token
+   * @throws {Error} If tenant not found or token acquisition fails
+   */
+  static async getValidTokenForTenantName(tenantName: string): Promise<StoredOAuth2Token> {
+    try {
+      // Get tenant configuration
+      const tenantConfig = await TenantConfigManager.getTenantByName(tenantName);
+      if (!tenantConfig) {
+        throw new Error(`Tenant not found: ${tenantName}`);
+      }
+      
+      return await this.getValidTokenForTenant(tenantConfig.id);
+    } catch (error) {
+      throw new Error(`Failed to get token for tenant ${tenantName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
