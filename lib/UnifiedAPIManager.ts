@@ -42,8 +42,8 @@ export class UnifiedAPIManager {
     }
     
     try {
-      // Load OAuth2 configuration from environment variables
-      const oauth2Config = OAuth2ConfigManager.loadConfigFromEnv();
+      // Load OAuth2 configuration from database (with fallback to environment variables)
+      const oauth2Config = await OAuth2ConfigManager.loadConfig();
 
       // Get or refresh token as needed
       const token = await OAuth2ConfigManager.getValidToken(currentToken ?? null, oauth2Config);

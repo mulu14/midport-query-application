@@ -167,6 +167,10 @@ export interface RemoteAPIQueryResult {
   rawResponse?: string;
   /** Additional notes about the execution */
   note: string;
+  /** Extracted table schema with metadata */
+  schema?: import('../lib/utils/SchemaExtractor').TableSchema;
+  /** Array of records for backward compatibility */
+  records?: any[];
 }
 
 /**

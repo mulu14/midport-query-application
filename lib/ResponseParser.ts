@@ -25,6 +25,20 @@ export class ResponseParser {
       // Determine response type based on content
       const isXMLResponse = rawResult.rawResponse?.includes('<?xml') || rawResult.rawResponse?.includes('<soap:');
       const isJSONResponse = rawResult.rawResponse?.startsWith('{') || rawResult.rawResponse?.startsWith('[');
+      
+      // 🔍 LOG UNIFIED RESPONSE METADATA
+      console.log('🔄 Unified Parser Metadata:', {
+        action: rawResult.action,
+        url: rawResult.url,
+        success: rawResult.success,
+        status: rawResult.status,
+        responseSize: rawResult.rawResponse?.length || 0,
+        isXMLResponse,
+        isJSONResponse,
+        limit,
+        hasData: !!rawResult.data,
+        dataRecordCount: rawResult.data?.recordCount || 0
+      });
 
       if (isXMLResponse) {
         return this.parseSOAPResponse(rawResult, limit);
@@ -259,8 +273,19 @@ export class ResponseParser {
         }
       }
 
+      // 🔍 LOG SOAP EXTRACTION RESULTS
+      console.log('🧼 SOAP Record Extraction:', {
+        totalRecordsFound: records.length,
+        hasDataArea: xmlData.includes('<DataArea'),
+        cleanedXmlLength: cleanXml.length,
+        entityPatternsUsed: entityPatterns.length,
+        sampleRecord: records[0] ? Object.keys(records[0]).slice(0, 5) : [],
+        recordFieldCounts: records.map(r => Object.keys(r).length).slice(0, 5)
+      });
+      
       return records;
     } catch (error) {
+      console.log('❌ SOAP Extraction Error:', error);
       return [];
     }
   }

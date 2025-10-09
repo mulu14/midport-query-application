@@ -18,13 +18,39 @@ import path from 'path';
  */
 export class OAuth2ConfigManager {
   /**
+   * Load OAuth2 configuration - tries database first, falls back to environment variables
+   * @static
+   * @returns {OAuth2Config} OAuth2 configuration object
+   * @throws {Error} If no configuration is found
+   */
+  static async loadConfig(): Promise<OAuth2Config> {
+    try {
+      // Try to get first active tenant from database
+      const summaries = await TenantConfigManager.getTenantSummaries();
+      const activeTenant = summaries.find(t => t.isActive);
+      
+      if (activeTenant) {
+        console.log(`Using credentials from database for tenant: ${activeTenant.tenantName}`);
+        return await this.loadConfigFromTenant(activeTenant.id);
+      }
+      
+      // Fallback to environment variables if no database tenant found
+      console.log('No active tenant found in database, falling back to environment variables');
+      return this.loadConfigFromEnvLegacy();
+    } catch (error) {
+      console.warn('Failed to load config from database, trying environment variables:', error);
+      return this.loadConfigFromEnvLegacy();
+    }
+  }
+
+  /**
    * Load OAuth2 configuration from environment variables (legacy method)
    * @static
    * @returns {OAuth2Config} OAuth2 configuration object
    * @throws {Error} If required environment variables are missing
-   * @deprecated Use loadConfigFromTenant instead for multi-tenant support
+   * @deprecated Use loadConfig or loadConfigFromTenant instead
    */
-  static loadConfigFromEnv(): OAuth2Config {
+  static loadConfigFromEnvLegacy(): OAuth2Config {
     // Safety check for browser environment
     if (typeof window !== 'undefined') {
       throw new Error('OAuth2ConfigManager.loadConfigFromEnv() cannot be used in browser environment. Use server-side API endpoints instead.');

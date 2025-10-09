@@ -7,6 +7,7 @@
 
 import type { APIRequestConfig, RemoteAPIQueryResult, StoredOAuth2Token } from '@/Entities/RemoteAPI';
 import { OAuth2ConfigManager } from './OAuth2ConfigManager';
+import { TenantConfigManager } from './TenantConfigManager';
 
   /**
    * REST API Manager class for handling ION OData API operations
@@ -261,15 +262,29 @@ export class RestAPIManager {
         body = JSON.stringify(config.parameters || {});
       }
 
-      // Prepare headers with OAuth2 authentication and LN-specific headers
+      // Get tenant-specific headers from database by tenant name
+      const tenant = await TenantConfigManager.getTenantByName(config.tenant);
+      const tenantHeaders = tenant ? 
+        await TenantConfigManager.getTenantInforHeaders(tenant.id) : 
+        {};
+        
+      // Convert to HTTP header format
+      const httpHeaders: Record<string, string> = {};
+      if (tenantHeaders.lnCompany) {
+        httpHeaders['X-Infor-LnCompany'] = tenantHeaders.lnCompany;
+      }
+      if (tenantHeaders.lnIdentity) {
+        httpHeaders['X-Infor-LnIdentity'] = tenantHeaders.lnIdentity;
+      }
+
+      // Prepare headers with OAuth2 authentication and tenant-specific LN headers
       const headers = {
         'Accept': 'application/json',
         'Content-Type': contentType,
         'Authorization': OAuth2ConfigManager.getAuthorizationHeader(token),
         'OData-MaxVersion': '4.0',
         'OData-Version': '4.0',
-        'X-Infor-LnCompany': '2405',
-        'X-Infor-LnIdentity': 'lnapi_mfo'
+        ...httpHeaders // Include tenant-specific X-Infor-LnCompany and X-Infor-LnIdentity
       };
       
       // Execute the HTTP request to ION OData API
@@ -287,6 +302,24 @@ export class RestAPIManager {
 
       // Parse successful response
       const responseData = await response.json();
+      
+      // 🔍 LOG REST/OData METADATA
+      console.log('🌐 REST/OData Response Metadata:', {
+        url: url,
+        method: method,
+        status: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get('content-type'),
+        hasODataContext: !!(responseData['@odata.context']),
+        hasODataCount: responseData['@odata.count'] !== undefined,
+        hasODataNextLink: !!(responseData['@odata.nextLink']),
+        hasValue: Array.isArray(responseData.value),
+        recordCount: Array.isArray(responseData.value) ? responseData.value.length : (responseData ? 1 : 0),
+        odataContext: responseData['@odata.context'],
+        odataCount: responseData['@odata.count'],
+        responseKeys: Object.keys(responseData || {}).slice(0, 10), // First 10 keys
+      });
+      
       const limit = config.parameters?.limit || 15; // Default record limit
       const parsedData = this.parseODataResponse(responseData, config.entityName || config.table, limit);
 

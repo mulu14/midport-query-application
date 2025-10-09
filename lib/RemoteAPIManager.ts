@@ -7,6 +7,7 @@
 
 import type { RemoteAPITenant, RemoteAPITable, SOAPRequestConfig, RemoteAPIQueryResult, OAuth2Config, StoredOAuth2Token } from '@/Entities/RemoteAPI';
 import { OAuth2ConfigManager } from './OAuth2ConfigManager';
+import { SchemaExtractor, TableSchema } from './utils/SchemaExtractor';
 
 /**
  * Remote API Manager class for handling ION API operations
@@ -208,10 +209,26 @@ export class RemoteAPIManager {
 
       const responseText = await response.text();
 
+      // 🔍 LOG SOAP METADATA
+      console.log('🧼 SOAP Response Metadata:', {
+        url: url,
+        action: config.action,
+        tenant: config.tenant,
+        service: config.table,
+        status: response.status,
+        statusText: response.statusText,
+        responseSize: responseText.length,
+        contentType: response.headers.get('content-type'),
+        hasNamespaces: responseText.includes('xmlns:'),
+        hasSoapFault: responseText.includes('<S:Fault>') || responseText.includes('<soap:Fault>'),
+        responsePreview: responseText.substring(0, 200) + '...',
+      });
+
       // Parse SOAP response to extract structured data
       const parsedData = this.parseSOAPResponse(responseText, config.table);
 
-      return {
+      // Extract schema metadata automatically
+      const queryResult: RemoteAPIQueryResult = {
         success: true,
         url: url,
         action: config.action,
@@ -219,8 +236,28 @@ export class RemoteAPIManager {
         statusText: response.statusText,
         data: parsedData, // Parsed structured data
         rawResponse: responseText, // Keep raw XML for debugging
-        note: `ION API ${config.action} operation completed successfully`
+        note: `ION API ${config.action} operation completed successfully`,
+        records: parsedData.records || [] // For backward compatibility
       };
+
+      // Automatically extract schema with metadata
+      try {
+        const serviceName = config.table || 'UnknownService';
+        const tenantId = config.tenant;
+        const queryUsed = config.sqlQuery || `${config.action} operation on ${serviceName}`;
+        
+        queryResult.schema = SchemaExtractor.extractSchema(
+          queryResult,
+          serviceName,
+          tenantId,
+          queryUsed
+        );
+      } catch (schemaError) {
+        console.warn('⚠️ Schema extraction failed:', schemaError);
+        // Continue without schema, don't fail the whole request
+      }
+
+      return queryResult;
 
     } catch (error) {
       throw error;
@@ -287,10 +324,31 @@ export class RemoteAPIManager {
    */
   static parseSOAPResponse(xmlResponse: string, serviceName: string): any {
     try {
+      // 🔍 LOG DETAILED SOAP PARSING METADATA
+      const namespaces = xmlResponse.match(/xmlns[^=]*="[^"]*"/g) || [];
+      const elements = xmlResponse.match(/<\w+[^>]*>/g) || [];
+      
+      console.log('🔍 SOAP Parsing Metadata:', {
+        serviceName,
+        xmlSize: xmlResponse.length,
+        namespaceCount: namespaces.length,
+        elementCount: elements.length,
+        namespaces: namespaces.slice(0, 5), // First 5 namespaces
+        hasDataArea: xmlResponse.includes('<DataArea'),
+        hasControlArea: xmlResponse.includes('<ControlArea'),
+        servicePattern: new RegExp(`<${serviceName}[^>]*>`, 'g').test(xmlResponse)
+      });
+
       // Check if response contains a SOAP fault
       if (xmlResponse.includes('<S:Fault>') || xmlResponse.includes('<soap:Fault>')) {
         const faultMatch = xmlResponse.match(/<faultstring>([\s\S]*?)<\/faultstring>/);
         const errorMessage = faultMatch ? faultMatch[1] : 'Unknown SOAP fault';
+        
+        console.log('❌ SOAP Fault Detected:', {
+          faultMessage: errorMessage,
+          serviceName
+        });
+        
         return {
           error: true,
           message: errorMessage,

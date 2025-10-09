@@ -105,12 +105,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error('Error creating tenant configuration:', error);
     
-    // Handle duplicate tenant name error
-    if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
+    // Handle duplicate tenant errors
+    if (error instanceof Error && (
+      error.message.includes('already exist') ||
+      error.message.includes('UNIQUE constraint failed')
+    )) {
       return NextResponse.json(
         {
-          error: 'Tenant name already exists',
-          message: 'A tenant with this name already exists'
+          error: 'Duplicate tenant credentials',
+          message: error.message
         },
         { status: 409 }
       );

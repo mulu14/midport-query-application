@@ -217,9 +217,59 @@ export class TenantConfigManager {
   }
 
   /**
+   * Check if tenant credentials already exist
+   */
+  static async tenantCredentialsExist(tenantName: string, clientId?: string): Promise<{
+    nameExists: boolean;
+    clientIdExists: boolean;
+    existingTenant?: string;
+  }> {
+    try {
+      const existingByName = await this.getTenantByName(tenantName);
+      let clientIdExists = false;
+      let existingTenant: string | undefined;
+
+      if (clientId) {
+        const allTenants = await this.getAllTenants();
+        const duplicateClientId = allTenants.find(tenant => 
+          tenant.ionConfig.clientId === clientId
+        );
+        if (duplicateClientId) {
+          clientIdExists = true;
+          existingTenant = duplicateClientId.tenantName;
+        }
+      }
+
+      return {
+        nameExists: !!existingByName,
+        clientIdExists,
+        existingTenant
+      };
+    } catch (error) {
+      console.error('Error checking tenant credentials existence:', error);
+      return { nameExists: false, clientIdExists: false };
+    }
+  }
+
+  /**
    * Create a new tenant credential configuration
    */
   static async createTenantCredential(newTenantCredential: NewTenantConfig): Promise<TenantConfig> {
+    // Check for existing tenant with same name
+    const existingTenant = await this.getTenantByName(newTenantCredential.tenantName);
+    if (existingTenant) {
+      throw new Error(`Tenant credentials already exist for '${newTenantCredential.tenantName}'. Use update instead of create.`);
+    }
+
+    // Check for existing tenant with same client ID (to prevent duplicate ION configurations)
+    const allTenants = await this.getAllTenants();
+    const duplicateClientId = allTenants.find(tenant => 
+      tenant.ionConfig.clientId === newTenantCredential.ionConfig.clientId
+    );
+    if (duplicateClientId) {
+      throw new Error(`Tenant credentials already exist with this Client ID. Existing tenant: '${duplicateClientId.tenantName}'`);
+    }
+
     const db = await this.initializeDatabase();
 
     return new Promise((resolve, reject) => {

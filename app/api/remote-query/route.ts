@@ -77,8 +77,8 @@ export async function POST(request: NextRequest) {
     const config: APIRequestConfig = data.config;
     const currentToken: StoredOAuth2Token | null = data.currentToken || null;
 
-    // Load OAuth2 configuration server-side (where environment variables are available)
-    const oauth2Config = OAuth2ConfigManager.loadConfigFromEnv();
+    // Load OAuth2 configuration from database (with fallback to environment variables)
+    const oauth2Config = await OAuth2ConfigManager.loadConfig();
 
     // Get or refresh OAuth2 token
     const token = await OAuth2ConfigManager.getValidToken(currentToken, oauth2Config);
