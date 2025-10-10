@@ -99,6 +99,8 @@ export interface RemoteAPITenant {
   oauth2Config?: OAuth2Config;
   /** Current OAuth2 token (stored securely) */
   oauth2Token?: StoredOAuth2Token;
+  /** Expand fields for OData REST APIs */
+  expandFields?: string[];
 }
 
 /**
@@ -126,6 +128,8 @@ export interface APIRequestConfig {
   oDataService?: string;
   /** Entity name for REST APIs */
   entityName?: string;
+  /** Expand fields for OData REST APIs (used to retrieve nested data) */
+  expandFields?: string[];
 }
 
 /**

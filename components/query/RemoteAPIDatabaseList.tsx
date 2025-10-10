@@ -14,6 +14,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { useRemoteAPI } from '@/lib/RemoteAPIContext';
 import { useSidebarMode } from '@/lib/SidebarModeContext';
+import EditDatabaseDialog from './EditDatabaseDialog';
+import TableExpandFieldsDialog from './TableExpandFieldsDialog';
 
 /**
  * Props interface for RemoteAPIDatabaseList component
@@ -52,6 +54,11 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
 
   const [expandedTenants, setExpandedTenants] = useState<string[]>([]);
   const [expandedApiTypes, setExpandedApiTypes] = useState<string[]>([]);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<any>(null);
+  const [expandFieldsDialogOpen, setExpandFieldsDialogOpen] = useState(false);
+  const [editingTable, setEditingTable] = useState<any>(null);
+  const [editingDatabaseId, setEditingDatabaseId] = useState<string>('');
 
   const toggleTenant = (tenantId: string) => {
     setExpandedTenants(prev =>
@@ -90,21 +97,61 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
   };
 
   const handleEditTenant = (tenant: any) => {
-    // For now, just show an alert. In a real implementation, this would open an edit dialog
-    alert(`Edit functionality for \"${tenant.name}\" will be implemented in a future update.`);
+    setEditingTenant(tenant);
+    setEditDialogOpen(true);
+  };
+
+  const handleEditDialogClose = () => {
+    setEditDialogOpen(false);
+    setEditingTenant(null);
+  };
+
+  const handleEditDialogSuccess = async () => {
+    await loadTenants();
+    setEditDialogOpen(false);
+    setEditingTenant(null);
+  };
+
+  const handleManageExpandFields = (tenant: any, table: any) => {
+    setEditingTable(table);
+    setEditingDatabaseId(tenant.id);
+    setExpandFieldsDialogOpen(true);
+  };
+
+  const handleExpandFieldsDialogClose = () => {
+    setExpandFieldsDialogOpen(false);
+    setEditingTable(null);
+    setEditingDatabaseId('');
+  };
+
+  const handleExpandFieldsDialogSuccess = async () => {
+    await loadTenants();
+    setExpandFieldsDialogOpen(false);
+    setEditingTable(null);
+    setEditingDatabaseId('');
   };
 
   /**
    * Handles editing a table/service within a tenant
+   * For REST services: Opens expand fields dialog
+   * For SOAP services: Allows name editing (no expand fields)
    * @param {string} tenantId - ID of the tenant containing the table
    * @param {any} table - Table object to edit
    * @param {'soap'|'rest'} apiType - API type of the service
    */
   const handleEditTable = (tenantId: string, table: any, apiType: 'soap' | 'rest') => {
-    const newName = prompt(`Edit ${apiType.toUpperCase()} service name:`, table.name);
-    if (newName && newName !== table.name) {
-      // Update the table name
-      updateTableName(tenantId, table.name, newName, apiType);
+    const tenant = tenants.find(t => t.id === tenantId);
+    if (!tenant) return;
+
+    if (apiType === 'rest') {
+      // For REST services, open expand fields dialog
+      handleManageExpandFields(tenant, table);
+    } else {
+      // For SOAP services, just edit the name (no expand fields)
+      const newName = prompt(`Edit ${apiType.toUpperCase()} service name:`, table.name);
+      if (newName && newName !== table.name) {
+        updateTableName(tenantId, table.name, newName, apiType);
+      }
     }
   };
 
@@ -413,7 +460,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                                                 handleEditTable(tenant.id, table, 'soap');
                                               }}
                                               className="p-1 hover:bg-blue-600/50 rounded transition-colors duration-200 text-blue-400 hover:text-blue-300"
-                                              title={`Edit ${table.name}`}
+                                              title={`Edit service name: ${table.name}`}
                                             >
                                               <Edit className="w-3 h-3" />
                                             </button>
@@ -481,7 +528,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
                                                 handleEditTable(tenant.id, table, 'rest');
                                               }}
                                               className="p-1 hover:bg-blue-600/50 rounded transition-colors duration-200 text-blue-400 hover:text-blue-300"
-                                              title={`Edit ${table.name}`}
+                                              title={`Edit expand fields for ${table.name}`}
                                             >
                                               <Edit className="w-3 h-3" />
                                             </button>
@@ -571,6 +618,23 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
           </Button>
         </div>
       )}
+
+      {/* Edit Database Dialog */}
+      <EditDatabaseDialog
+        open={editDialogOpen}
+        onClose={handleEditDialogClose}
+        onSuccess={handleEditDialogSuccess}
+        database={editingTenant}
+      />
+
+      {/* Table Expand Fields Dialog */}
+      <TableExpandFieldsDialog
+        open={expandFieldsDialogOpen}
+        onClose={handleExpandFieldsDialogClose}
+        onSuccess={handleExpandFieldsDialogSuccess}
+        databaseId={editingDatabaseId}
+        table={editingTable}
+      />
     </div>
   );
 }

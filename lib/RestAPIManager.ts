@@ -107,40 +107,25 @@ export class RestAPIManager {
     }
 
     // Handle EXPAND for nested objects/arrays ($expand parameter from OData API)
-    console.log('🟡 CHECKING EXPAND PARAMETERS:', {
-      hasExpandParam: !!parameters.expand,
-      expandValue: parameters.expand,
-      expandType: typeof parameters.expand,
-      hasDollarExpand: !!parameters['$expand'],
-      dollarExpandValue: parameters['$expand'],
-      allParams: Object.keys(parameters)
-    });
-    
     if (parameters.expand) {
-      console.log('🟢 PROCESSING EXPAND PARAMETER:', parameters.expand);
       if (Array.isArray(parameters.expand)) {
         // Handle array of expand entities: ['SoldToBPRef', 'LineRefs', 'ShipToBPRef']
         const expandQuery = `$expand=${parameters.expand.join(',')}`;
-        console.log('🟢 ADDING EXPAND (ARRAY):', expandQuery);
         queryParts.push(expandQuery);
       } else if (typeof parameters.expand === 'string') {
         // Handle comma-separated string: 'SoldToBPRef,LineRefs,ShipToBPRef'
         const expandQuery = `$expand=${parameters.expand}`;
-        console.log('🟢 ADDING EXPAND (STRING):', expandQuery);
         queryParts.push(expandQuery);
       }
     }
     
     // Handle direct $expand parameter (alternative syntax)
     if (parameters['$expand']) {
-      console.log('🟢 PROCESSING $EXPAND PARAMETER:', parameters['$expand']);
       if (Array.isArray(parameters['$expand'])) {
         const expandQuery = `$expand=${parameters['$expand'].join(',')}`;
-        console.log('🟢 ADDING $EXPAND (ARRAY):', expandQuery);
         queryParts.push(expandQuery);
       } else {
         const expandQuery = `$expand=${parameters['$expand']}`;
-        console.log('🟢 ADDING $EXPAND (STRING):', expandQuery);
         queryParts.push(expandQuery);
       }
     }
@@ -288,19 +273,14 @@ export class RestAPIManager {
       );
       
     // Generate OData query parameters from the request configuration
-    console.log('🔶 PARAMETERS RECEIVED:', config.parameters);
-    
-    // TEMPORARY: Force expand parameter for Orders (until SQL parsing works properly)
+    // Use expand fields from configuration if available
     const modifiedParams = { ...(config.parameters || {}) };
-    if (config.entityName === 'Orders' || config.table === 'Orders') {
-      modifiedParams.expand = 'LineRefs,SoldToBPRef,ShipToBPRef,ActualDeliveryLineRefs';
-      console.log('🟠 FORCED EXPAND FOR ORDERS:', modifiedParams.expand);
+    if (config.expandFields && config.expandFields.length > 0) {
+      modifiedParams.expand = config.expandFields.join(',');
     }
     
     const queryString = this.generateODataQuery(modifiedParams);
-    console.log('🔷 GENERATED QUERY STRING:', queryString);
     const url = queryString ? `${baseUrl}?${queryString}` : baseUrl;
-    console.log('🌍 FINAL REQUEST URL:', url);
       
       // Convert API action to appropriate HTTP method
       const method = this.getHttpMethod(config.action);
@@ -354,46 +334,8 @@ export class RestAPIManager {
       // Parse successful response
       const responseData = await response.json();
       
-      // 🔴 DETAILED RESPONSE ANALYSIS
-      console.log('🔴 RAW API RESPONSE:', {
-        hasValue: !!responseData.value,
-        valueIsArray: Array.isArray(responseData.value),
-        valueLength: Array.isArray(responseData.value) ? responseData.value.length : 'N/A',
-        firstRecordKeys: responseData.value?.[0] ? Object.keys(responseData.value[0]) : 'No first record',
-        hasLineRefs: responseData.value?.[0] ? 'LineRefs' in responseData.value[0] : 'No first record',
-        lineRefsType: responseData.value?.[0]?.LineRefs ? typeof responseData.value[0].LineRefs : 'Not found',
-        lineRefsLength: Array.isArray(responseData.value?.[0]?.LineRefs) ? responseData.value[0].LineRefs.length : 'Not array',
-        responseSize: JSON.stringify(responseData).length
-      });
-      
-      // 🔍 LOG REST/OData METADATA
-      console.log('🌐 REST/OData Response Metadata:', {
-        url: url,
-        method: method,
-        status: response.status,
-        statusText: response.statusText,
-        contentType: response.headers.get('content-type'),
-        hasODataContext: !!(responseData['@odata.context']),
-        hasODataCount: responseData['@odata.count'] !== undefined,
-        hasODataNextLink: !!(responseData['@odata.nextLink']),
-        hasValue: Array.isArray(responseData.value),
-        recordCount: Array.isArray(responseData.value) ? responseData.value.length : (responseData ? 1 : 0),
-        odataContext: responseData['@odata.context'],
-        odataCount: responseData['@odata.count'],
-        responseKeys: Object.keys(responseData || {}).slice(0, 10), // First 10 keys
-      });
-      
       const limit = config.parameters?.limit || 15; // Default record limit
       const parsedData = this.parseODataResponse(responseData, config.entityName || config.table, limit);
-      
-      // 🔵 LOG PARSED DATA ANALYSIS
-      console.log('🔵 PARSED DATA ANALYSIS:', {
-        success: parsedData.success,
-        recordCount: parsedData.recordCount,
-        firstRecordKeys: parsedData.records?.[0] ? Object.keys(parsedData.records[0]) : 'No first record',
-        hasLineRefsInParsed: parsedData.records?.[0] ? 'LineRefs' in parsedData.records[0] : 'No first record',
-        lineRefsInParsed: parsedData.records?.[0]?.LineRefs ? 'EXISTS' : 'MISSING'
-      });
 
       // Extract schema metadata from the parsed response
       let schemaMetadata = null;

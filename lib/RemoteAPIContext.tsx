@@ -51,7 +51,9 @@ interface RemoteAPIContextType {
   /** Function to delete a tenant */
   deleteTenant: (id: string) => Promise<void>;
   /** Function to create a new remote API database */
-  createRemoteAPIDatabase: (data: { name?: string; fullUrl: string; baseUrl: string; tenantName: string; services: string; tables: string[] }) => Promise<RemoteAPITenant>;
+  createRemoteAPIDatabase: (data: { name?: string; fullUrl: string; baseUrl: string; tenantName: string; services: string; tables: string[]; expandFields?: string[] }) => Promise<RemoteAPITenant>;
+  /** Function to update an existing remote API database */
+  updateRemoteAPIDatabase: (id: string, data: { name: string; baseUrl: string; tenantName: string; services: string; tables: string[]; expandFields: string[]; status: string }) => Promise<RemoteAPITenant>;
 }
 
 /**
@@ -99,7 +101,8 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
         tables: db.tables || [],
         status: db.status === 'active' ? 'connected' : 'disconnected',
         fullUrl: db.fullUrl, // Include the full URL from database configuration
-        tenantName: db.tenantName // Keep the actual tenant ID for API calls
+        tenantName: db.tenantName, // Keep the actual tenant ID for API calls
+        expandFields: db.expandFields || [] // Include expand fields for OData queries
       }));
 
       setTenants(formattedTenants);
@@ -192,6 +195,9 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
           }
         }
         
+        // Get expand fields from the selected table configuration
+        const expandFields = (selectedTable as any)?.expandFields?.map((ef: any) => ef.name) || [];
+        
         config = {
           tenant: (selectedTenant as any).tenantName || selectedTenant.name, // Use actual tenant ID for API
           table: entityName || endpoint,
@@ -202,7 +208,8 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
           fullUrl: null, // Don't use SOAP URL for REST
           company: '2405', // Correct LN company number (confirmed from LN user config)
           oDataService: oDataService,
-          entityName: entityName
+          entityName: entityName,
+          expandFields: expandFields // Add expand fields for OData $expand parameter
         };
       } else {
         // For SOAP APIs, use the existing logic
@@ -491,6 +498,62 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  /**
+   * Updates an existing remote API database by calling the API endpoint
+   * @async
+   * @function updateRemoteAPIDatabase
+   * @param {string} id - Database ID to update
+   * @param {Object} data - Database configuration data to update
+   * @param {string} data.name - Display name for the database
+   * @param {string} data.baseUrl - Base URL for the API
+   * @param {string} data.tenantName - Tenant name
+   * @param {string} data.services - Services path
+   * @param {string[]} data.tables - Array of table names
+   * @param {string[]} data.expandFields - Array of OData expand fields
+   * @param {string} data.status - Database status (active/inactive)
+   * @returns {Promise<RemoteAPITenant>} The updated tenant
+   * @throws {Error} If API request fails
+   */
+  const updateRemoteAPIDatabase = async (id: string, data: { name: string; baseUrl: string; tenantName: string; services: string; tables: string[]; expandFields: string[]; status: string }) => {
+    try {
+      // Update via API endpoint
+      const response = await fetch(`/api/remote-databases/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Failed to update remote database: ${response.status} ${response.statusText} - ${errorData.error || errorData.details || 'Unknown error'}`);
+      }
+
+      const updatedDatabase = await response.json();
+
+      // Convert to RemoteAPITenant format
+      const updatedTenant: RemoteAPITenant = {
+        id: updatedDatabase.id,
+        name: updatedDatabase.name || updatedDatabase.tenantName,
+        tables: updatedDatabase.tables || [],
+        status: updatedDatabase.status === 'active' ? 'connected' : 'disconnected',
+        fullUrl: updatedDatabase.fullUrl,
+        tenantName: updatedDatabase.tenantName,
+        expandFields: updatedDatabase.expandFields || []
+      };
+
+      // Update the tenant in the list
+      setTenants(prev => prev.map(tenant => 
+        tenant.id === id ? updatedTenant : tenant
+      ));
+
+      return updatedTenant;
+    } catch (error) {
+      throw error;
+    }
+  };
+
   useEffect(() => {
     loadTenants();
   }, []);
@@ -513,7 +576,8 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
     setShowAddDialog,
     updateTenant,
     deleteTenant,
-    createRemoteAPIDatabase
+    createRemoteAPIDatabase,
+    updateRemoteAPIDatabase
   };
 
   return (

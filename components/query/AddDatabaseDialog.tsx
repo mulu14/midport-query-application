@@ -6,6 +6,7 @@
  */
 
 import React, { useState } from 'react';
+import { X, Plus } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
         tenant_name: '',
         services: '',
         tables: '',
+        expand_fields: [],
         api_type: 'soap'
       });
     }
@@ -85,6 +87,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
     tenant_name: string;
     services: string;
     tables: string; // Comma-separated string for input, converted to array on submit
+    expand_fields: string[]; // Array of OData expand fields
     api_type: 'soap' | 'rest'; // API type selection
   }>({
     name: '',
@@ -97,9 +100,30 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
     tenant_name: '',
     services: '',
     tables: '',
+    expand_fields: [],
     api_type: 'soap'
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [newExpandField, setNewExpandField] = useState('');
+
+  // Helper functions for managing expand fields
+  const addExpandField = (field: string) => {
+    const trimmedField = field.trim();
+    if (trimmedField && !formData.expand_fields.includes(trimmedField)) {
+      setFormData(prev => ({
+        ...prev,
+        expand_fields: [...prev.expand_fields, trimmedField]
+      }));
+      setNewExpandField('');
+    }
+  };
+
+  const removeExpandField = (fieldToRemove: string) => {
+    setFormData(prev => ({
+      ...prev,
+      expand_fields: prev.expand_fields.filter(field => field !== fieldToRemove)
+    }));
+  };
 
   const constructFullUrl = (baseUrl: string, tenantName: string, services: string, table: string) => {
     // Remove trailing slash from baseUrl if present
@@ -175,7 +199,8 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
           baseUrl: formData.base_url,
           tenantName: formData.tenant_name,
           services: formData.services,
-          tables: tablesArray
+          tables: tablesArray,
+          expandFields: formData.expand_fields
         });
 
         // Only reset form and close dialog if database was actually created
@@ -192,6 +217,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
             tenant_name: '',
             services: '',
             tables: '',
+            expand_fields: [],
             api_type: 'soap'
           });
 
@@ -230,6 +256,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
           tenant_name: '',
           services: '',
           tables: '',
+          expand_fields: [],
           api_type: 'soap'
         });
 
@@ -345,6 +372,59 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
                   <p className="text-xs text-[#8bb3cc]">Services for this API type. Same tenant supports both: SOAP (BusinessPartner_v3,ServiceCall_v2) and REST (tdapi.slsSalesOrder/orders,tsapi.socServiceOrder/Orders). Add different types separately.</p>
                 </div>
               </div>
+
+              {/* Expand Fields Section - Only show for REST API */}
+              {formData.api_type === 'rest' && (
+                <div className="space-y-2">
+                  <Label className="text-white">OData Expand Fields</Label>
+                  <div className="space-y-2">
+                    {/* Current expand fields */}
+                    {formData.expand_fields.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {formData.expand_fields.map((field, index) => (
+                          <div key={index} className="flex items-center bg-[#2a6b83] text-white px-3 py-1 rounded-full text-sm">
+                            <span>{field}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeExpandField(field)}
+                              className="ml-2 hover:text-red-300 transition-colors"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Add new expand field */}
+                    <div className="flex gap-2">
+                      <Input
+                        value={newExpandField}
+                        onChange={(e) => setNewExpandField(e.target.value)}
+                        placeholder="LineRefs, SoldToBPRef, ShipToBPRef..."
+                        className="bg-[#0f3d4f] border-[#1a5f7a] text-white placeholder:text-[#8bb3cc] focus:ring-2 focus:ring-blue-500 text-sm h-10"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addExpandField(newExpandField);
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => addExpandField(newExpandField)}
+                        disabled={!newExpandField.trim() || formData.expand_fields.includes(newExpandField.trim())}
+                        className="bg-[#1a5f7a] hover:bg-[#2a6b83] text-white px-3 h-10"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-[#8bb3cc]">
+                    Add fields to expand in OData queries (e.g., LineRefs, SoldToBPRef, ShipToBPRef). These will be used to retrieve nested data from the API.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="full_url_display" className="text-white">Full Database URL</Label>

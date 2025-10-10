@@ -293,6 +293,12 @@ export class SQLiteManager {
         if (!hasNameColumn) {
           await this.apiExec(`ALTER TABLE remote_api_databases ADD COLUMN name TEXT NOT NULL DEFAULT 'Unknown'`);
         }
+
+        // Add expand_fields column if it doesn't exist (migration)
+        const hasExpandFieldsColumn = columns.some((col: any) => col.name === 'expand_fields');
+        if (!hasExpandFieldsColumn) {
+          await this.apiExec(`ALTER TABLE remote_api_databases ADD COLUMN expand_fields TEXT`);
+        }
       } catch (error) {
         // Migration error (likely table is new)
       }
@@ -314,46 +320,21 @@ export class SQLiteManager {
         )
       `);
 
-      // Create customers table
+      // Create remote API expand fields table (one-to-many with tables)
       await this.apiExec(`
-        CREATE TABLE IF NOT EXISTS customers (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          email TEXT UNIQUE NOT NULL,
-          phone TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // Create products table
-      await this.apiExec(`
-        CREATE TABLE IF NOT EXISTS products (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          price REAL NOT NULL,
-          category TEXT NOT NULL,
-          stock INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // Create orders table
-      await this.apiExec(`
-        CREATE TABLE IF NOT EXISTS orders (
-          id TEXT PRIMARY KEY,
-          customer_id TEXT NOT NULL,
-          product_id TEXT NOT NULL,
-          quantity INTEGER NOT NULL,
-          order_date DATETIME NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'cancelled')),
+        CREATE TABLE IF NOT EXISTS remote_api_expand_fields (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          table_id INTEGER NOT NULL,
+          field_name TEXT NOT NULL,
+          description TEXT,
+          is_active BOOLEAN DEFAULT 1,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
-          FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+          FOREIGN KEY (table_id) REFERENCES remote_api_tables(id) ON DELETE CASCADE,
+          UNIQUE(table_id, field_name)
         )
       `);
+
 
       // Migration for remote_api_tables - add new columns if they don't exist
       try {
@@ -393,94 +374,17 @@ export class SQLiteManager {
       await this.apiExec(`
         CREATE INDEX IF NOT EXISTS idx_databases_name ON databases(name);
         CREATE INDEX IF NOT EXISTS idx_tables_database_id ON database_tables(database_id);
-        CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
-        CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
-        CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
-        CREATE INDEX IF NOT EXISTS idx_orders_product_id ON orders(product_id);
-        CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+        CREATE INDEX IF NOT EXISTS idx_remote_api_databases_tenant ON remote_api_databases(tenant_name);
+        CREATE INDEX IF NOT EXISTS idx_remote_api_tables_database_id ON remote_api_tables(database_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_api_expand_fields_table_id ON remote_api_expand_fields(table_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_api_expand_fields_active ON remote_api_expand_fields(is_active);
       `);
 
-      // Seed sample data
-      await this.seedSampleData();
-
     } catch (error) {
       throw error;
     }
   }
 
-  /**
-   * Seeds the database with sample data for testing and demonstration purposes
-   * @private
-   * @static
-   * @async
-   * @returns {Promise<void>} Resolves when seeding is complete
-   * @throws {Error} If seeding operations fail
-   * 
-   * @description
-   * Creates sample customers, products, and orders if the database is empty.
-   * This method is idempotent - it checks for existing data before inserting.
-   * Used during database initialization to provide meaningful demo data.
-   */
-  private static async seedSampleData(): Promise<void> {
-    try {
-      // Check if data already exists
-      const existingCustomers = await this.apiGet('SELECT COUNT(*) as count FROM customers');
-      if (existingCustomers[0].count > 0) {
-        return;
-      }
-
-      // Seed customers
-      const customers = [
-        { id: '1', name: 'John Smith', email: 'john@example.com', phone: '+1-555-0123' },
-        { id: '2', name: 'Sarah Johnson', email: 'sarah@example.com', phone: '+1-555-0124' },
-        { id: '3', name: 'Mike Brown', email: 'mike@example.com', phone: '+1-555-0125' }
-      ];
-
-      for (const customer of customers) {
-        await this.apiPost(
-          'INSERT INTO customers (id, name, email, phone) VALUES (?, ?, ?, ?)',
-          [customer.id, customer.name, customer.email, customer.phone]
-        );
-      }
-
-      // Seed products
-      const products = [
-        { id: '1', name: 'Wireless Headphones', price: 199.99, category: 'Electronics', stock: 50 },
-        { id: '2', name: 'Programming Book', price: 49.99, category: 'Books', stock: 25 },
-        { id: '3', name: 'Coffee Maker', price: 89.99, category: 'Kitchen', stock: 15 },
-        { id: '4', name: 'Gaming Mouse', price: 79.99, category: 'Electronics', stock: 30 },
-        { id: '5', name: 'Desk Chair', price: 249.99, category: 'Furniture', stock: 10 }
-      ];
-
-      for (const product of products) {
-        await this.apiPost(
-          'INSERT INTO products (id, name, price, category, stock) VALUES (?, ?, ?, ?, ?)',
-          [product.id, product.name, product.price, product.category, product.stock]
-        );
-      }
-
-      // Seed orders
-      const orders = [
-        { id: '1', customer_id: '1', product_id: '1', quantity: 2, order_date: '2024-01-15', status: 'completed' },
-        { id: '2', customer_id: '2', product_id: '2', quantity: 1, order_date: '2024-01-16', status: 'pending' },
-        { id: '3', customer_id: '1', product_id: '3', quantity: 3, order_date: '2024-01-17', status: 'completed' },
-        { id: '4', customer_id: '3', product_id: '4', quantity: 1, order_date: '2024-01-18', status: 'completed' },
-        { id: '5', customer_id: '2', product_id: '5', quantity: 1, order_date: '2024-01-19', status: 'pending' },
-        { id: '6', customer_id: '3', product_id: '1', quantity: 1, order_date: '2024-01-20', status: 'completed' },
-        { id: '7', customer_id: '1', product_id: '2', quantity: 2, order_date: '2024-01-21', status: 'completed' }
-      ];
-
-      for (const order of orders) {
-        await this.apiPost(
-          'INSERT INTO orders (id, customer_id, product_id, quantity, order_date, status) VALUES (?, ?, ?, ?, ?, ?)',
-          [order.id, order.customer_id, order.product_id, order.quantity, order.order_date, order.status]
-        );
-      }
-
-    } catch (error) {
-      throw error;
-    }
-  }
 
   /**
    * Creates a new remote API database or updates an existing one
@@ -544,7 +448,7 @@ export class SQLiteManager {
     };
   }
 
-  static async createRemoteAPIDatabase(data: { name?: string; fullUrl: string; baseUrl: string; tenantName: string; services: string; tables: string[] }): Promise<any> {
+  static async createRemoteAPIDatabase(data: { name?: string; fullUrl: string; baseUrl: string; tenantName: string; services: string; tables: string[]; expandFields?: string[] }): Promise<any> {
     await this.initialize();
 
     // Check if tenant already exists (tenant_name UNIQUE constraint will handle this)
@@ -593,9 +497,10 @@ export class SQLiteManager {
     } else {
       // Create new tenant
       try {
+        const expandFieldsJson = data.expandFields ? JSON.stringify(data.expandFields) : null;
         const result = await this.apiPost(
-          'INSERT INTO remote_api_databases (name, base_url, tenant_name, services, full_url) VALUES (?, ?, ?, ?, ?)',
-          [data.name || `${data.tenantName} - ${data.tables[0] || 'default'}`, data.baseUrl, data.tenantName, data.services, data.fullUrl || '']
+          'INSERT INTO remote_api_databases (name, base_url, tenant_name, services, full_url, expand_fields) VALUES (?, ?, ?, ?, ?, ?)',
+          [data.name || `${data.tenantName} - ${data.tables[0] || 'default'}`, data.baseUrl, data.tenantName, data.services, data.fullUrl || '', expandFieldsJson]
         );
 
         const tenantId = result.lastID;
@@ -633,18 +538,41 @@ export class SQLiteManager {
   static async getRemoteAPIDatabases(): Promise<any[]> {
     await this.initialize();
     const databases = await this.apiGet(`
-      SELECT id, name, full_url, base_url, tenant_name, services, status, created_at, updated_at
+      SELECT id, name, full_url, base_url, tenant_name, services, expand_fields, status, created_at, updated_at
       FROM remote_api_databases
       ORDER BY created_at DESC
     `);
 
-    // Transform to camelCase and get tables for each database
+    // Transform to camelCase and get tables with expand fields for each database
     const result = [];
     for (let index = 0; index < databases.length; index++) {
       const db = databases[index];
       const tables = db.id ? await this.apiGet(`
-        SELECT name, endpoint, api_type, odata_service, entity_name FROM remote_api_tables WHERE database_id = ? ORDER BY name
+        SELECT id, name, endpoint, api_type, odata_service, entity_name FROM remote_api_tables WHERE database_id = ? ORDER BY name
       `, [db.id]) : [];
+
+      // Get expand fields for each table
+      const tablesWithExpandFields = [];
+      for (const table of tables) {
+        const expandFields = await this.apiGet(`
+          SELECT field_name, description, is_active FROM remote_api_expand_fields 
+          WHERE table_id = ? AND is_active = 1 ORDER BY field_name
+        `, [table.id]);
+
+        tablesWithExpandFields.push({
+          id: table.id,
+          name: table.name,
+          endpoint: table.endpoint || table.name,
+          apiType: table.api_type || 'soap',
+          oDataService: table.odata_service,
+          entityName: table.entity_name,
+          expandFields: expandFields.map((field: any) => ({
+            name: field.field_name,
+            description: field.description,
+            isActive: field.is_active === 1
+          }))
+        });
+      }
 
       result.push({
         id: db.id ? db.id.toString() : `temp_${index}_${Date.now()}`,
@@ -653,16 +581,11 @@ export class SQLiteManager {
         baseUrl: db.base_url,
         tenantName: db.tenant_name,
         services: db.services,
+        expandFields: db.expand_fields ? JSON.parse(db.expand_fields) : [], // Keep legacy for backward compatibility
         status: db.status,
         createdAt: new Date(db.created_at),
         updatedAt: new Date(db.updated_at),
-        tables: tables.map((table: any) => ({
-          name: table.name,
-          endpoint: table.endpoint || table.name,
-          apiType: table.api_type || 'soap',
-          oDataService: table.odata_service,
-          entityName: table.entity_name
-        })),
+        tables: tablesWithExpandFields,
         // Add summary statistics about API types in this tenant
         soapServicesCount: tables.filter((t: any) => (t.api_type || 'soap') === 'soap').length,
         restServicesCount: tables.filter((t: any) => t.api_type === 'rest').length,
@@ -703,7 +626,7 @@ export class SQLiteManager {
   static async getRemoteAPIDatabaseById(id: string): Promise<any | null> {
     await this.initialize();
     const databases = await this.apiGet(`
-      SELECT id, name, full_url, base_url, tenant_name, services, status, created_at, updated_at
+      SELECT id, name, full_url, base_url, tenant_name, services, expand_fields, status, created_at, updated_at
       FROM remote_api_databases
       WHERE id = ?
     `, [id]);
@@ -712,8 +635,33 @@ export class SQLiteManager {
 
     const db = databases[0];
     const tables = await this.apiGet(`
-      SELECT name FROM remote_api_tables WHERE database_id = ? ORDER BY name
+      SELECT id, name, endpoint, api_type, odata_service, entity_name FROM remote_api_tables WHERE database_id = ? ORDER BY name
     `, [id]);
+
+    // Get expand fields for each table (same logic as getRemoteAPIDatabases)
+    const tablesWithExpandFields = [];
+    for (const table of tables) {
+      const expandFields = await this.apiGet(`
+        SELECT field_name, description, is_active FROM remote_api_expand_fields 
+        WHERE table_id = ? AND is_active = 1 ORDER BY field_name
+      `, [table.id]);
+
+      const processedExpandFields = expandFields.map((field: any) => ({
+        name: field.field_name,
+        description: field.description,
+        isActive: field.is_active === 1
+      }));
+      
+      tablesWithExpandFields.push({
+        id: table.id,
+        name: table.name,
+        endpoint: table.endpoint || table.name,
+        apiType: table.api_type || 'soap',
+        oDataService: table.odata_service,
+        entityName: table.entity_name,
+        expandFields: processedExpandFields
+      });
+    }
 
     return {
       id: db.id ? db.id.toString() : `temp_${Date.now()}`,
@@ -722,13 +670,11 @@ export class SQLiteManager {
       baseUrl: db.base_url,
       tenantName: db.tenant_name,
       services: db.services,
+      expandFields: db.expand_fields ? JSON.parse(db.expand_fields) : [], // Keep legacy for backward compatibility
       status: db.status,
       createdAt: new Date(db.created_at),
       updatedAt: new Date(db.updated_at),
-      tables: tables.map((table: any) => ({
-        name: table.name,
-        endpoint: table.name
-      }))
+      tables: tablesWithExpandFields
     };
   }
 
@@ -791,6 +737,83 @@ export class SQLiteManager {
       [databaseId, tableName]
     );
     return true;
+  }
+
+  /**
+   * Adds expand fields to a specific table
+   * @static
+   * @async
+   * @param {number} tableId - Table ID to add expand fields to
+   * @param {string[]} expandFields - Array of expand field names
+   * @returns {Promise<boolean>} True if fields were added successfully
+   * @throws {Error} If operation fails
+   */
+  static async addExpandFieldsToTable(tableId: number, expandFields: string[]): Promise<boolean> {
+    await this.initialize();
+    
+    for (const fieldName of expandFields) {
+      try {
+        const trimmedField = fieldName.trim();
+        await this.apiPost(
+          'INSERT OR IGNORE INTO remote_api_expand_fields (table_id, field_name, is_active) VALUES (?, ?, 1)',
+          [tableId, trimmedField]
+        );
+      } catch (error) {
+        // Continue with other fields if one fails
+        console.warn(`Failed to add expand field ${fieldName} to table ${tableId}:`, error);
+      }
+    }
+    
+    return true;
+  }
+
+  /**
+   * Updates expand fields for a specific table
+   * @static
+   * @async
+   * @param {number} tableId - Table ID to update expand fields for
+   * @param {string[]} expandFields - New array of expand field names
+   * @returns {Promise<boolean>} True if fields were updated successfully
+   * @throws {Error} If operation fails
+   */
+  static async updateTableExpandFields(tableId: number, expandFields: string[]): Promise<boolean> {
+    await this.initialize();
+    
+    try {
+      // Delete existing expand fields for this table
+      await this.apiPost(
+        'DELETE FROM remote_api_expand_fields WHERE table_id = ?',
+        [tableId]
+      );
+      
+      // Add new expand fields
+      if (expandFields && expandFields.length > 0) {
+        await this.addExpandFieldsToTable(tableId, expandFields);
+      }
+      
+      return true;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Gets expand fields for a specific table
+   * @static
+   * @async
+   * @param {number} tableId - Table ID to get expand fields for
+   * @returns {Promise<string[]>} Array of active expand field names
+   * @throws {Error} If query fails
+   */
+  static async getTableExpandFields(tableId: number): Promise<string[]> {
+    await this.initialize();
+    
+    const fields = await this.apiGet(
+      'SELECT field_name FROM remote_api_expand_fields WHERE table_id = ? AND is_active = 1 ORDER BY field_name',
+      [tableId]
+    );
+    
+    return fields.map((field: any) => field.field_name);
   }
 
   /**
@@ -1098,139 +1121,62 @@ export class SQLiteManager {
     });
   }
 
-  /**
-   * Retrieves all customers from the sample data
-   * @static
-   * @async
-   * @returns {Promise<Array>} Array of customer objects
-   * @returns {string} return[].id - Customer ID
-   * @returns {string} return[].name - Customer name
-   * @returns {string} return[].email - Customer email address
-   * @returns {string} return[].phone - Customer phone number
-   * @throws {Error} If database query fails
-   * 
-   * @example
-   * ```typescript
-   * const customers = await SQLiteManager.getCustomers();
-   * // Process the returned customers array
-   * ```
-   */
-  static async getCustomers(): Promise<any[]> {
-    await this.initialize();
-    return this.apiGet('SELECT id, name, email, phone FROM customers ORDER BY name');
-  }
 
   /**
-   * Retrieves a specific customer by ID
+   * Updates an existing remote API database configuration
    * @static
    * @async
-   * @param {string} id - Customer ID to retrieve
-   * @returns {Promise<Object|null>} Customer object or null if not found
-   * @returns {string} return.id - Customer ID
-   * @returns {string} return.name - Customer name
-   * @returns {string} return.email - Customer email address
-   * @returns {string} return.phone - Customer phone number
-   * @throws {Error} If database query fails
-   * 
-   * @example
-   * ```typescript
-   * const customer = await SQLiteManager.getCustomerById('1');
-   * if (customer) {
-   *   // Process the customer data
-   *   return customer;
-   * }
-   * ```
+   * @param {string} id - Database ID to update
+   * @param {Object} data - Updated database configuration
+   * @param {string} data.name - Display name for the database
+   * @param {string} data.fullUrl - Complete API URL
+   * @param {string} data.baseUrl - Base URL for the API
+   * @param {string} data.tenantName - Tenant name
+   * @param {string} data.services - Services path
+   * @param {string[]} data.tables - Array of table/service names
+   * @param {string[]} data.expandFields - Array of OData expand fields
+   * @param {string} data.status - Database status (active/inactive)
+   * @returns {Promise<Object>} Updated database object
+   * @throws {Error} If database update fails
    */
-  static async getCustomerById(id: string): Promise<any | null> {
+  static async updateRemoteAPIDatabase(id: string, data: {
+    name: string;
+    fullUrl: string;
+    baseUrl: string;
+    tenantName: string;
+    services: string;
+    tables: string[];
+    expandFields: string[];
+    status: string;
+  }): Promise<any> {
     await this.initialize();
-    const customers = await this.apiGet('SELECT id, name, email, phone FROM customers WHERE id = ?', [id]);
-    return customers.length > 0 ? customers[0] : null;
-  }
 
-  /**
-   * Creates a new customer record
-   * @static
-   * @async
-   * @param {Object} data - Customer data
-   * @param {string} data.name - Customer name
-   * @param {string} data.email - Customer email address (must be unique)
-   * @param {string} data.phone - Customer phone number
-   * @returns {Promise<Object>} Created customer object with generated ID
-   * @throws {Error} If customer creation fails or email already exists
-   * 
-   * @example
-   * ```typescript
-   * const newCustomer = await SQLiteManager.createCustomer({
-   *   name: 'Jane Doe',
-   *   email: 'jane@example.com',
-   *   phone: '+1-555-0199'
-   * });
-   * // Customer created successfully with generated ID
-   * ```
-   */
-  static async createCustomer(data: { name: string; email: string; phone: string }): Promise<any> {
-    await this.initialize();
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    await this.apiPost(
-      'INSERT INTO customers (id, name, email, phone) VALUES (?, ?, ?, ?)',
-      [id, data.name, data.email, data.phone]
-    );
-    return this.getCustomerById(id);
-  }
+    try {
+      // Update main database record
+      const expandFieldsJson = data.expandFields ? JSON.stringify(data.expandFields) : null;
+      await this.apiPost(
+        'UPDATE remote_api_databases SET name = ?, base_url = ?, tenant_name = ?, services = ?, full_url = ?, expand_fields = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [data.name, data.baseUrl, data.tenantName, data.services, data.fullUrl, expandFieldsJson, data.status, id]
+      );
 
-  static async getProducts(): Promise<any[]> {
-    await this.initialize();
-    return this.apiGet('SELECT id, name, price, category, stock FROM products ORDER BY name');
-  }
+      // Update tables - delete existing and insert new ones
+      await this.apiPost('DELETE FROM remote_api_tables WHERE database_id = ?', [id]);
 
-  static async getProductById(id: string): Promise<any | null> {
-    await this.initialize();
-    const products = await this.apiGet('SELECT id, name, price, category, stock FROM products WHERE id = ?', [id]);
-    return products.length > 0 ? products[0] : null;
-  }
+      // Insert updated tables
+      if (data.tables && data.tables.length > 0) {
+        for (const table of data.tables) {
+          const serviceInfo = this.parseServiceDefinition(table, data.services);
+          await this.apiPost(
+            'INSERT INTO remote_api_tables (database_id, name, endpoint, api_type, odata_service, entity_name) VALUES (?, ?, ?, ?, ?, ?)',
+            [id, serviceInfo.name, serviceInfo.endpoint, serviceInfo.apiType, serviceInfo.oDataService || null, serviceInfo.entityName || null]
+          );
+        }
+      }
 
-  static async createProduct(data: { name: string; price: number; category: string; stock: number }): Promise<any> {
-    await this.initialize();
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    await this.apiPost(
-      'INSERT INTO products (id, name, price, category, stock) VALUES (?, ?, ?, ?, ?)',
-      [id, data.name, data.price, data.category, data.stock]
-    );
-    return this.getProductById(id);
-  }
-
-  static async getOrders(): Promise<any[]> {
-    await this.initialize();
-    return this.apiGet(`
-      SELECT o.id, o.customer_id, o.product_id, o.quantity, o.order_date, o.status,
-             c.name as customer_name, p.name as product_name, p.price
-      FROM orders o
-      JOIN customers c ON o.customer_id = c.id
-      JOIN products p ON o.product_id = p.id
-      ORDER BY o.order_date DESC
-    `);
-  }
-
-  static async getOrderById(id: string): Promise<any | null> {
-    await this.initialize();
-    const orders = await this.apiGet(`
-      SELECT o.id, o.customer_id, o.product_id, o.quantity, o.order_date, o.status,
-             c.name as customer_name, p.name as product_name, p.price
-      FROM orders o
-      JOIN customers c ON o.customer_id = c.id
-      JOIN products p ON o.product_id = p.id
-      WHERE o.id = ?
-    `, [id]);
-    return orders.length > 0 ? orders[0] : null;
-  }
-
-  static async createOrder(data: { customer_id: string; product_id: string; quantity: number; order_date: string; status: string }): Promise<any> {
-    await this.initialize();
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    await this.apiPost(
-      'INSERT INTO orders (id, customer_id, product_id, quantity, order_date, status) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, data.customer_id, data.product_id, data.quantity, data.order_date, data.status]
-    );
-    return this.getOrderById(id);
+      // Return the updated database
+      return await this.getRemoteAPIDatabaseById(id);
+    } catch (error) {
+      throw error;
+    }
   }
 }
