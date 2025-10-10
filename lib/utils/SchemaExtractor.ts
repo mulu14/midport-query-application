@@ -205,7 +205,7 @@ export class SchemaExtractor {
   }
 
   /**
-   * Extract schema from REST/OData JSON response
+   * Extract schema from REST/OData JSON response while preserving natural data structure
    */
   private static extractRESTSchema(result: RemoteAPIQueryResult, serviceName: string): TableSchema {
     console.log('🌐 Extracting REST/OData Schema for:', serviceName);
@@ -251,47 +251,9 @@ export class SchemaExtractor {
       if (sampleRecords.length > 0) {
         const fieldMap = new Map<string, Set<string>>();
 
-        // Analyze sample records to infer field types
+        // Analyze sample records to infer field types (preserving natural structure)
         sampleRecords.forEach(record => {
-          Object.keys(record).forEach(fieldName => {
-            // Skip OData metadata fields
-            if (fieldName.startsWith('@odata') || fieldName.startsWith('@')) return;
-
-            if (!fieldMap.has(fieldName)) {
-              fieldMap.set(fieldName, new Set());
-            }
-
-            const value = record[fieldName];
-            
-            if (value === null || value === undefined) {
-              fieldMap.get(fieldName)?.add('nullable');
-            } else if (typeof value === 'boolean') {
-              fieldMap.get(fieldName)?.add('boolean');
-            } else if (typeof value === 'number') {
-              fieldMap.get(fieldName)?.add(Number.isInteger(value) ? 'integer' : 'decimal');
-            } else if (typeof value === 'string') {
-              // Check for date patterns
-              if (value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
-                fieldMap.get(fieldName)?.add('datetime');
-              } else if (value.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                fieldMap.get(fieldName)?.add('date');
-              } else if (value.match(/^[\d.]+$/) && !isNaN(Number(value))) {
-                fieldMap.get(fieldName)?.add('numeric');
-              } else {
-                fieldMap.get(fieldName)?.add('string');
-                if (typeof value === 'string') {
-                  const currentMax = fieldMap.get(fieldName + '_maxLength') || new Set(['0']);
-                  currentMax.clear();
-                  currentMax.add(String(Math.max(Number(Array.from(currentMax)[0]), value.length)));
-                  fieldMap.set(fieldName + '_maxLength', currentMax);
-                }
-              }
-            } else if (Array.isArray(value)) {
-              fieldMap.get(fieldName)?.add('array');
-            } else if (typeof value === 'object') {
-              fieldMap.get(fieldName)?.add('object');
-            }
-          });
+          this.analyzeObjectFields(record, fieldMap);
         });
 
         // Convert to FieldSchema array
@@ -316,14 +278,20 @@ export class SchemaExtractor {
         }
       }
 
+      // Keep fields in their natural order as they appear in the response
+      // No sorting to preserve the original response structure
+
       schema.totalFields = schema.fields.length;
 
       console.log('📋 REST/OData SCHEMA EXTRACTED:', {
         tableName: schema.tableName,
         totalFields: schema.totalFields,
-        fieldNames: schema.fields.map(f => f.fieldName),
+        primitiveFields: schema.fields.filter(f => !['object', 'array'].includes(f.dataType)).length,
+        complexFields: schema.fields.filter(f => ['object', 'array'].includes(f.dataType)).length,
         odataEntitySet: schema.odataEntitySet,
-        sampleRecordCount: sampleRecords.length
+        sampleRecordCount: sampleRecords.length,
+        fieldNames: schema.fields.map(f => `${f.fieldName} (${f.dataType})`).slice(0, 10),
+        complexFieldsFound: schema.fields.filter(f => ['object', 'array'].includes(f.dataType)).map(f => f.fieldName)
       });
 
       return schema;
@@ -331,6 +299,159 @@ export class SchemaExtractor {
     } catch (error) {
       console.error('❌ REST Schema extraction failed:', error);
       return schema;
+    }
+  }
+
+  /**
+   * Analyze object fields recursively to extract complete schema structure
+   * @private
+   * @static
+   * @param obj - The object to analyze
+   * @param fieldMap - Map to store field type information
+   * @param pathPrefix - Current path prefix for nested fields
+   * @param maxDepth - Maximum recursion depth to prevent infinite loops
+   * @param currentDepth - Current recursion depth
+   */
+  private static analyzeObjectFields(
+    obj: any, 
+    fieldMap: Map<string, Set<string>>, 
+    pathPrefix: string = '', 
+    maxDepth: number = 10, 
+    currentDepth: number = 0
+  ): void {
+    // Prevent infinite recursion
+    if (currentDepth >= maxDepth || !obj || typeof obj !== 'object') {
+      return;
+    }
+
+    Object.keys(obj).forEach(fieldName => {
+      // Skip metadata fields that start with @ symbol
+      if (fieldName.startsWith('@')) return;
+
+      const fullFieldName = pathPrefix ? `${pathPrefix}.${fieldName}` : fieldName;
+      const value = obj[fieldName];
+      
+      // Initialize field in map if not exists
+      if (!fieldMap.has(fullFieldName)) {
+        fieldMap.set(fullFieldName, new Set());
+      }
+      
+      // Analyze value type and add to field map
+      this.analyzeValueType(value, fullFieldName, fieldMap, pathPrefix, maxDepth, currentDepth);
+    });
+  }
+
+  /**
+   * Analyze individual value type and handle recursion for complex types
+   * @private
+   * @static
+   */
+  private static analyzeValueType(
+    value: any, 
+    fullFieldName: string, 
+    fieldMap: Map<string, Set<string>>, 
+    pathPrefix: string, 
+    maxDepth: number, 
+    currentDepth: number
+  ): void {
+    if (value === null || value === undefined) {
+      fieldMap.get(fullFieldName)?.add('nullable');
+    } else if (typeof value === 'boolean') {
+      fieldMap.get(fullFieldName)?.add('boolean');
+    } else if (typeof value === 'number') {
+      fieldMap.get(fullFieldName)?.add(Number.isInteger(value) ? 'integer' : 'decimal');
+    } else if (typeof value === 'string') {
+      this.analyzeStringValue(value, fullFieldName, fieldMap);
+    } else if (Array.isArray(value)) {
+      this.analyzeArrayValue(value, fullFieldName, fieldMap, maxDepth, currentDepth);
+    } else if (typeof value === 'object' && value !== null) {
+      this.analyzeObjectValue(value, fullFieldName, fieldMap, maxDepth, currentDepth);
+    }
+  }
+
+  /**
+   * Analyze string value to determine specific type (date, numeric, etc.)
+   * @private
+   * @static
+   */
+  private static analyzeStringValue(value: string, fullFieldName: string, fieldMap: Map<string, Set<string>>): void {
+    // Check for ISO datetime pattern
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+      fieldMap.get(fullFieldName)?.add('datetime');
+    }
+    // Check for date pattern
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      fieldMap.get(fullFieldName)?.add('date');
+    }
+    // Check for numeric string
+    else if (/^[\d.-]+$/.test(value) && !isNaN(Number(value))) {
+      fieldMap.get(fullFieldName)?.add('numeric');
+    }
+    // Default to string
+    else {
+      fieldMap.get(fullFieldName)?.add('string');
+      
+      // Track max length for strings
+      const maxLengthKey = fullFieldName + '_maxLength';
+      const currentMax = fieldMap.get(maxLengthKey) || new Set(['0']);
+      const currentMaxValue = Math.max(Number(Array.from(currentMax)[0] || '0'), value.length);
+      currentMax.clear();
+      currentMax.add(String(currentMaxValue));
+      fieldMap.set(maxLengthKey, currentMax);
+    }
+  }
+
+  /**
+   * Analyze array value and its items
+   * @private
+   * @static
+   */
+  private static analyzeArrayValue(
+    value: any[], 
+    fullFieldName: string, 
+    fieldMap: Map<string, Set<string>>, 
+    maxDepth: number, 
+    currentDepth: number
+  ): void {
+    fieldMap.get(fullFieldName)?.add('array');
+    
+    // Analyze array items if not empty
+    if (value.length > 0 && currentDepth < maxDepth) {
+      // Sample a few items from the array to understand structure
+      const sampleSize = Math.min(value.length, 3);
+      const sampleItems = value.slice(0, sampleSize);
+      
+      // Just analyze the first item to understand the structure
+      const firstItem = sampleItems[0];
+      if (firstItem !== null && firstItem !== undefined) {
+        if (typeof firstItem === 'object' && !Array.isArray(firstItem)) {
+          // For object items, analyze their structure using the array field name as prefix
+          this.analyzeObjectFields(firstItem, fieldMap, fullFieldName, maxDepth, currentDepth + 1);
+        } else {
+          // For primitive array items, the array itself describes the type
+          // No need to create additional entries
+        }
+      }
+    }
+  }
+
+  /**
+   * Analyze object value and its properties
+   * @private
+   * @static
+   */
+  private static analyzeObjectValue(
+    value: any, 
+    fullFieldName: string, 
+    fieldMap: Map<string, Set<string>>, 
+    maxDepth: number, 
+    currentDepth: number
+  ): void {
+    fieldMap.get(fullFieldName)?.add('object');
+    
+    // Recursively analyze nested object properties
+    if (currentDepth < maxDepth) {
+      this.analyzeObjectFields(value, fieldMap, fullFieldName, maxDepth, currentDepth + 1);
     }
   }
 

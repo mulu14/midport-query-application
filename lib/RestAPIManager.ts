@@ -8,6 +8,7 @@
 import type { APIRequestConfig, RemoteAPIQueryResult, StoredOAuth2Token } from '@/Entities/RemoteAPI';
 import { OAuth2ConfigManager } from './OAuth2ConfigManager';
 import { TenantConfigManager } from './TenantConfigManager';
+import { SchemaExtractor } from './utils/SchemaExtractor';
 
   /**
    * REST API Manager class for handling ION OData API operations
@@ -59,7 +60,7 @@ export class RestAPIManager {
     
     Object.entries(parameters).forEach(([key, value]) => {
       // Skip utility parameters (including limit - handled client-side)
-      if (['limit', 'offset', 'timestamp', 'orderBy', 'orderDirection', 'serviceType', 'entityType', 'legacyFilter', 'company'].includes(key)) {
+      if (['limit', 'offset', 'timestamp', 'orderBy', 'orderDirection', 'serviceType', 'entityType', 'legacyFilter', 'company', 'expand', '$expand'].includes(key)) {
         return;
       }
       
@@ -105,6 +106,45 @@ export class RestAPIManager {
       queryParts.push(`$orderby=${parameters.orderBy} ${direction}`);
     }
 
+    // Handle EXPAND for nested objects/arrays ($expand parameter from OData API)
+    console.log('🟡 CHECKING EXPAND PARAMETERS:', {
+      hasExpandParam: !!parameters.expand,
+      expandValue: parameters.expand,
+      expandType: typeof parameters.expand,
+      hasDollarExpand: !!parameters['$expand'],
+      dollarExpandValue: parameters['$expand'],
+      allParams: Object.keys(parameters)
+    });
+    
+    if (parameters.expand) {
+      console.log('🟢 PROCESSING EXPAND PARAMETER:', parameters.expand);
+      if (Array.isArray(parameters.expand)) {
+        // Handle array of expand entities: ['SoldToBPRef', 'LineRefs', 'ShipToBPRef']
+        const expandQuery = `$expand=${parameters.expand.join(',')}`;
+        console.log('🟢 ADDING EXPAND (ARRAY):', expandQuery);
+        queryParts.push(expandQuery);
+      } else if (typeof parameters.expand === 'string') {
+        // Handle comma-separated string: 'SoldToBPRef,LineRefs,ShipToBPRef'
+        const expandQuery = `$expand=${parameters.expand}`;
+        console.log('🟢 ADDING EXPAND (STRING):', expandQuery);
+        queryParts.push(expandQuery);
+      }
+    }
+    
+    // Handle direct $expand parameter (alternative syntax)
+    if (parameters['$expand']) {
+      console.log('🟢 PROCESSING $EXPAND PARAMETER:', parameters['$expand']);
+      if (Array.isArray(parameters['$expand'])) {
+        const expandQuery = `$expand=${parameters['$expand'].join(',')}`;
+        console.log('🟢 ADDING $EXPAND (ARRAY):', expandQuery);
+        queryParts.push(expandQuery);
+      } else {
+        const expandQuery = `$expand=${parameters['$expand']}`;
+        console.log('🟢 ADDING $EXPAND (STRING):', expandQuery);
+        queryParts.push(expandQuery);
+      }
+    }
+
     return queryParts.join('&');
   }
 
@@ -130,7 +170,7 @@ export class RestAPIManager {
     
     Object.entries(parameters).forEach(([key, value]) => {
       // Skip utility parameters (including limit - handled client-side)
-      if (['limit', 'offset', 'timestamp', 'orderBy', 'orderDirection', 'serviceType', 'entityType', 'legacyFilter', 'company'].includes(key)) {
+      if (['limit', 'offset', 'timestamp', 'orderBy', 'orderDirection', 'serviceType', 'entityType', 'legacyFilter', 'company', 'expand', '$expand'].includes(key)) {
         return;
       }
       
@@ -247,9 +287,20 @@ export class RestAPIManager {
         config.entityName || config.table
       );
       
-      // Generate OData query parameters from the request configuration
-      const queryString = this.generateODataQuery(config.parameters || {});
-      const url = queryString ? `${baseUrl}?${queryString}` : baseUrl;
+    // Generate OData query parameters from the request configuration
+    console.log('🔶 PARAMETERS RECEIVED:', config.parameters);
+    
+    // TEMPORARY: Force expand parameter for Orders (until SQL parsing works properly)
+    const modifiedParams = { ...(config.parameters || {}) };
+    if (config.entityName === 'Orders' || config.table === 'Orders') {
+      modifiedParams.expand = 'LineRefs,SoldToBPRef,ShipToBPRef,ActualDeliveryLineRefs';
+      console.log('🟠 FORCED EXPAND FOR ORDERS:', modifiedParams.expand);
+    }
+    
+    const queryString = this.generateODataQuery(modifiedParams);
+    console.log('🔷 GENERATED QUERY STRING:', queryString);
+    const url = queryString ? `${baseUrl}?${queryString}` : baseUrl;
+    console.log('🌍 FINAL REQUEST URL:', url);
       
       // Convert API action to appropriate HTTP method
       const method = this.getHttpMethod(config.action);
@@ -303,6 +354,18 @@ export class RestAPIManager {
       // Parse successful response
       const responseData = await response.json();
       
+      // 🔴 DETAILED RESPONSE ANALYSIS
+      console.log('🔴 RAW API RESPONSE:', {
+        hasValue: !!responseData.value,
+        valueIsArray: Array.isArray(responseData.value),
+        valueLength: Array.isArray(responseData.value) ? responseData.value.length : 'N/A',
+        firstRecordKeys: responseData.value?.[0] ? Object.keys(responseData.value[0]) : 'No first record',
+        hasLineRefs: responseData.value?.[0] ? 'LineRefs' in responseData.value[0] : 'No first record',
+        lineRefsType: responseData.value?.[0]?.LineRefs ? typeof responseData.value[0].LineRefs : 'Not found',
+        lineRefsLength: Array.isArray(responseData.value?.[0]?.LineRefs) ? responseData.value[0].LineRefs.length : 'Not array',
+        responseSize: JSON.stringify(responseData).length
+      });
+      
       // 🔍 LOG REST/OData METADATA
       console.log('🌐 REST/OData Response Metadata:', {
         url: url,
@@ -322,6 +385,48 @@ export class RestAPIManager {
       
       const limit = config.parameters?.limit || 15; // Default record limit
       const parsedData = this.parseODataResponse(responseData, config.entityName || config.table, limit);
+      
+      // 🔵 LOG PARSED DATA ANALYSIS
+      console.log('🔵 PARSED DATA ANALYSIS:', {
+        success: parsedData.success,
+        recordCount: parsedData.recordCount,
+        firstRecordKeys: parsedData.records?.[0] ? Object.keys(parsedData.records[0]) : 'No first record',
+        hasLineRefsInParsed: parsedData.records?.[0] ? 'LineRefs' in parsedData.records[0] : 'No first record',
+        lineRefsInParsed: parsedData.records?.[0]?.LineRefs ? 'EXISTS' : 'MISSING'
+      });
+
+      // Extract schema metadata from the parsed response
+      let schemaMetadata = null;
+      try {
+        if (parsedData.records && parsedData.records.length > 0) {
+          // Create a result object that matches RemoteAPIQueryResult interface
+          const resultForSchema = {
+            success: true,
+            url: url,
+            action: config.action,
+            status: response.status,
+            statusText: response.statusText,
+            data: parsedData,
+            rawResponse: JSON.stringify(responseData, null, 2),
+            note: `ION OData API ${config.action} operation completed successfully`,
+            records: parsedData.records
+          };
+          
+          schemaMetadata = SchemaExtractor.extractSchema(
+            resultForSchema,
+            config.entityName || config.table || 'UnknownEntity',
+            config.tenant,
+            `SELECT * FROM ${config.entityName || config.table}`
+          );
+          console.log('🔍 REST Schema extracted:', {
+            entityName: config.entityName || config.table,
+            fieldCount: schemaMetadata?.fields?.length || 0,
+            fields: schemaMetadata?.fields?.map(f => `${f.fieldName}: ${f.dataType}`).slice(0, 5)
+          });
+        }
+      } catch (schemaError) {
+        console.warn('⚠️ Schema extraction failed for REST response:', schemaError);
+      }
 
       return {
         success: true,
@@ -330,6 +435,7 @@ export class RestAPIManager {
         status: response.status,
         statusText: response.statusText,
         data: parsedData,
+        schema: schemaMetadata,
         rawResponse: JSON.stringify(responseData, null, 2),
         note: `ION OData API ${config.action} operation completed successfully`
       };

@@ -363,6 +363,15 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
     if (!parameters.limit && !query.toLowerCase().includes('limit')) {
       parameters.limit = 15;
     }
+    
+    // Handle OData expand parameter for getting nested data (LineRefs, SoldToBPRef, etc.)
+    if (query.toLowerCase().includes('expand=')) {
+      const expandMatch = query.match(/expand\s*=\s*['"]([^'"]+)['"]/i);
+      if (expandMatch) {
+        parameters.expand = expandMatch[1];
+        console.log('📝 EXPAND PARAMETER DETECTED:', parameters.expand);
+      }
+    }
 
     return parameters;
   };

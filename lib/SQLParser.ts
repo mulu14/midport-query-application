@@ -90,6 +90,16 @@ export class SQLParser {
     // Remove extra spaces
     condition = condition.trim();
     
+    // Handle special OData parameters (expand, $expand, etc.)
+    const specialParams = ['expand', '$expand', '$select', '$filter', '$orderby', '$top', '$skip'];
+    for (const param of specialParams) {
+      const paramMatch = condition.match(new RegExp(`\\b${param.replace('$', '\\$')}\\s*=\\s*['"]([^'"]+)['"]`, 'i'));
+      if (paramMatch) {
+        // This is a special parameter, not a filter condition
+        return null;
+      }
+    }
+    
     // Regex patterns for different operators
     const patterns = [
       // LIKE operator
@@ -193,6 +203,28 @@ export class SQLParser {
       parameters.orderBy = orderByMatch[1];
       parameters.orderDirection = orderByMatch[2] || 'asc';
     }
+
+    // Extract EXPAND clause (for OData $expand parameter) - must be in WHERE clause
+    const expandMatch = sqlQuery.match(/\bexpand\s*=\s*['"]([^'"]+)['"]/i);
+    if (expandMatch) {
+      parameters.expand = expandMatch[1];
+      console.log('📝 SQL PARSER: Found expand parameter:', expandMatch[1]);
+    }
+    
+    // Extract direct $expand parameter
+    const dollarExpandMatch = sqlQuery.match(/\$expand\s*=\s*['"]([^'"]+)['"]/i);
+    if (dollarExpandMatch) {
+      parameters['$expand'] = dollarExpandMatch[1];
+      console.log('📝 SQL PARSER: Found $expand parameter:', dollarExpandMatch[1]);
+    }
+    
+    // Debug: Show what we're trying to parse
+    console.log('📝 SQL PARSER DEBUG:', {
+      originalQuery: sqlQuery,
+      foundParams: Object.keys(parameters),
+      hasExpand: !!parameters.expand,
+      hasDollarExpand: !!parameters['$expand']
+    });
 
     // Add timestamp for all requests
     parameters.timestamp = new Date().toISOString();

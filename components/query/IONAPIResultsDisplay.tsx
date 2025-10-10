@@ -50,12 +50,166 @@ interface IONAPIResultsDisplayProps {
 export default function IONAPIResultsDisplay({ result }: IONAPIResultsDisplayProps) {
   const [showRawXML, setShowRawXML] = useState(false);
   const [expandedRecords, setExpandedRecords] = useState<number[]>([]);
+  const [expandedArrays, setExpandedArrays] = useState<string[]>([]);
+  
+  // 🔍 DEBUG: Log what data we're receiving
+  console.log('🎨 ION DISPLAY COMPONENT RECEIVED:', {
+    success: result.success,
+    hasData: !!result.data,
+    recordCount: result.data?.recordCount || 0,
+    firstRecordKeys: result.data?.records?.[0] ? Object.keys(result.data.records[0]) : 'No records',
+    hasLineRefs: result.data?.records?.[0] ? 'LineRefs' in result.data.records[0] : 'No first record',
+    lineRefsType: result.data?.records?.[0]?.LineRefs ? typeof result.data.records[0].LineRefs : 'Not found',
+    lineRefsLength: Array.isArray(result.data?.records?.[0]?.LineRefs) ? result.data.records[0].LineRefs.length : 'Not array',
+    hasSoldToBPRef: result.data?.records?.[0] ? 'SoldToBPRef' in result.data.records[0] : 'No first record'
+  });
+  // Enhanced function to render values while preserving structure and showing key nested data
+  const renderComplexValue = (value: any, fieldName?: string, recordIndex?: number): string | JSX.Element => {
+    // Create unique identifier for arrays to track expand/collapse state
+    const arrayId = `${recordIndex ?? 'root'}-${fieldName ?? 'unknown'}`;
+    if (value === null || value === undefined) {
+      return <span className="text-slate-500 italic">null</span>;
+    }
+
+    // Debug log to see what we're rendering
+    if (fieldName === 'LineRefs' || fieldName === 'SoldToBPRef') {
+      console.log(`🎨 RENDERING ${fieldName}:`, typeof value, Array.isArray(value), value);
+    }
+
+    if (Array.isArray(value)) {
+      const isExpanded = expandedArrays.includes(arrayId);
+      
+      return (
+        <div className="space-y-1">
+          <button
+            onClick={() => toggleArray(arrayId)}
+            className="flex items-center gap-2 text-blue-400 font-semibold hover:text-blue-300 transition-colors duration-200"
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+            <span>Array ({value.length} items)</span>
+          </button>
+          
+          <AnimatePresence>
+            {isExpanded && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-2 mt-2">
+                  {value.map((item, index) => (
+                    <div key={index} className="ml-4 text-xs bg-slate-700/40 p-3 rounded border border-slate-600/30">
+                      <div className="text-blue-300 font-semibold mb-2">Item {index + 1}:</div>
+                      {typeof item === 'object' && item ? (
+                        <div className="space-y-1">
+                          {Object.entries(item).map(([key, val]) => (
+                            <div key={key} className="flex justify-between items-center py-1">
+                              <span className="text-slate-400 font-medium min-w-0 flex-shrink-0 mr-2">{key}:</span>
+                              <span className="text-white font-mono text-right min-w-0 flex-1 truncate">
+                                {val === null ? (
+                                  <span className="text-slate-500 italic">null</span>
+                                ) : val === undefined ? (
+                                  <span className="text-slate-500 italic">undefined</span>
+                                ) : Array.isArray(val) ? (
+                                  <span className="text-orange-400">[{val.length} items]</span>
+                                ) : typeof val === 'object' ? (
+                                  <span className="text-green-400">{'{' + Object.keys(val).length + ' fields}'}</span>
+                                ) : typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/) ? (
+                                  <span className="text-yellow-400">{new Date(val).toLocaleString()}</span>
+                                ) : typeof val === 'number' ? (
+                                  <span className="text-cyan-400">{val.toLocaleString()}</span>
+                                ) : typeof val === 'boolean' ? (
+                                  <span className={val ? 'text-green-400' : 'text-red-400'}>{String(val)}</span>
+                                ) : (
+                                  String(val)
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-white">{String(item)}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      );
+    }
+
+    if (typeof value === 'object' && value !== null) {
+      const keyCount = Object.keys(value).length;
+      
+      return (
+        <div className="space-y-1">
+          <span className="text-green-400 font-semibold">Object ({keyCount} fields)</span>
+          <div className="ml-4 text-xs bg-slate-700/40 p-3 rounded border border-slate-600/30">
+            {Object.entries(value).map(([key, val]) => (
+              <div key={key} className="flex justify-between items-center py-1">
+                <span className="text-slate-400 font-medium min-w-0 flex-shrink-0 mr-2">{key}:</span>
+                <span className="text-white font-mono text-right min-w-0 flex-1 truncate">
+                  {val === null ? (
+                    <span className="text-slate-500 italic">null</span>
+                  ) : val === undefined ? (
+                    <span className="text-slate-500 italic">undefined</span>
+                  ) : Array.isArray(val) ? (
+                    <span className="text-orange-400">[{val.length} items]</span>
+                  ) : typeof val === 'object' ? (
+                    <span className="text-green-400">{'{' + Object.keys(val).length + ' fields}'}</span>
+                  ) : typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/) ? (
+                    <span className="text-yellow-400">{new Date(val).toLocaleString()}</span>
+                  ) : typeof val === 'number' ? (
+                    <span className="text-cyan-400">{val.toLocaleString()}</span>
+                  ) : typeof val === 'boolean' ? (
+                    <span className={val ? 'text-green-400' : 'text-red-400'}>{String(val)}</span>
+                  ) : (
+                    String(val)
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // For primitive values, return as string with appropriate styling
+    if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+      return <span className="text-yellow-400 font-mono">{value}</span>;
+    }
+    
+    if (typeof value === 'number') {
+      return <span className="text-cyan-400 font-mono">{String(value)}</span>;
+    }
+    
+    if (typeof value === 'boolean') {
+      return <span className={`font-mono ${value ? 'text-green-400' : 'text-red-400'}`}>{String(value)}</span>;
+    }
+    
+    return String(value);
+  };
 
   const toggleRecord = (index: number) => {
     setExpandedRecords(prev =>
       prev.includes(index)
         ? prev.filter(i => i !== index)
         : [...prev, index]
+    );
+  };
+
+  const toggleArray = (arrayId: string) => {
+    setExpandedArrays(prev =>
+      prev.includes(arrayId)
+        ? prev.filter(id => id !== arrayId)
+        : [...prev, arrayId]
     );
   };
 
@@ -296,14 +450,10 @@ export default function IONAPIResultsDisplay({ result }: IONAPIResultsDisplayPro
                         <div className="space-y-2">
                           <h5 className="text-white font-medium mb-2">All Fields ({Object.keys(record).length})</h5>
                           {Object.entries(record).map(([key, value]) => (
-                            <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 py-1 border-b border-slate-600/20">
-                              <div className="text-slate-400 font-mono text-sm min-w-32 font-medium">{key}:</div>
-                              <div className="text-white font-mono text-sm flex-1 break-all">
-                                {value === null ? (
-                                  <span className="text-slate-500 italic">null</span>
-                                ) : (
-                                  <span>{String(value)}</span>
-                                )}
+                            <div key={key} className="flex flex-col gap-1 py-2 border-b border-slate-600/20">
+                              <div className="text-slate-400 font-mono text-sm font-medium">{key}:</div>
+                              <div className="text-white text-sm flex-1 break-all">
+                                {renderComplexValue(value, key, index)}
                               </div>
                             </div>
                           ))}

@@ -52,10 +52,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     console.log('🔍 SCHEMA EXTRACTION REQUEST:', { tenantId, serviceName, format });
 
     // Load tenant configuration
-    const tenantConfigManager = new TenantConfigManager(tenantId);
-    const isValidTenant = await tenantConfigManager.validateTenant();
+    const tenant = await TenantConfigManager.getTenantById(tenantId);
 
-    if (!isValidTenant) {
+    if (!tenant) {
       return res.status(404).json({ 
         success: false, 
         error: `Tenant "${tenantId}" not found or invalid configuration`

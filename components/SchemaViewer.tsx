@@ -49,6 +49,7 @@ export function SchemaViewer({
 }: SchemaViewerProps) {
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string>('');
+  const [expandedSections, setExpandedSections] = useState<string[]>([]);
 
   // Auto-fetch schema if not provided
   useEffect(() => {
@@ -116,6 +117,182 @@ export function SchemaViewer({
       case 'object': return '🗂️';
       default: return '❓';
     }
+  };
+
+  const toggleSection = (sectionPath: string) => {
+    setExpandedSections(prev => 
+      prev.includes(sectionPath) 
+        ? prev.filter(p => p !== sectionPath)
+        : [...prev, sectionPath]
+    );
+  };
+
+  const isExpanded = (sectionPath: string): boolean => {
+    return expandedSections.includes(sectionPath);
+  };
+
+  // Organize fields into hierarchical structure preserving original response order
+  const organizeFieldsHierarchically = (fields: FieldSchema[]) => {
+    // First, separate root fields from nested fields
+    const rootFields: FieldSchema[] = [];
+    const nestedFieldsMap: Record<string, FieldSchema[]> = {};
+    
+    // Group nested fields by their parent
+    fields.forEach(field => {
+      if (field.fieldName.includes('.') || field.fieldName.includes('[')) {
+        const parentName = field.fieldName.split(/[\.\[]/)[0];
+        if (!nestedFieldsMap[parentName]) {
+          nestedFieldsMap[parentName] = [];
+        }
+        nestedFieldsMap[parentName].push(field);
+      } else {
+        rootFields.push(field);
+      }
+    });
+    
+    // Keep fields in their original response order - DO NOT SORT
+    // The order should exactly match the API response structure
+    
+    // Create organized structure
+    const organizedFields: Array<{
+      field: FieldSchema;
+      type: 'root' | 'parent';
+      children?: FieldSchema[];
+    }> = [];
+    
+    // Process root fields in their original response order
+    rootFields.forEach(field => {
+      if (nestedFieldsMap[field.fieldName]) {
+        // This field has children - make it a parent
+        organizedFields.push({
+          field,
+          type: 'parent',
+          children: nestedFieldsMap[field.fieldName]
+        });
+      } else {
+        // This is a simple root field
+        organizedFields.push({
+          field,
+          type: 'root'
+        });
+      }
+    });
+    
+    console.log('🗂️ ORGANIZED FIELDS:', {
+      totalFields: fields.length,
+      rootFields: rootFields.length,
+      nestedSections: Object.keys(nestedFieldsMap).length,
+      firstFewFields: organizedFields.slice(0, 5).map(item => `${item.field.fieldName} (${item.type})`)
+    });
+    
+    return organizedFields;
+  };
+
+  // Render a field row with proper indentation
+  const renderFieldRow = (field: FieldSchema, level: number = 0) => {
+    const indent = level * 24;
+    const isNested = level > 0;
+    
+    return (
+      <TableRow key={field.fieldName} className={isNested ? 'bg-slate-800 hover:bg-slate-750' : 'bg-slate-900 hover:bg-slate-800'}>
+        <TableCell className="font-medium">
+          <div className="flex items-center gap-2" style={{ marginLeft: `${indent}px` }}>
+            <span className="text-lg">{getDataTypeIcon(field.dataType)}</span>
+            <span className={isNested ? 'text-sm text-white font-medium' : 'text-white font-semibold'}>
+              {isNested ? field.fieldName.split(/[\.\[]/).pop()?.replace(']', '') : field.fieldName}
+            </span>
+            {isNested && (
+              <span className="text-xs text-slate-300 ml-1">
+                ({field.fieldName.includes('[') ? 'array item' : 'nested field'})
+              </span>
+            )}
+          </div>
+        </TableCell>
+        <TableCell>
+          <Badge variant="outline" className="font-mono bg-slate-600 text-white border-slate-500">
+            {field.dataType}
+          </Badge>
+        </TableCell>
+        <TableCell>
+          <Badge 
+            variant={field.isNullable ? 'secondary' : 'destructive'} 
+            className={field.isNullable ? 'bg-slate-500 text-white' : 'bg-red-600 text-white'}
+          >
+            {field.isNullable ? 'YES' : 'NO'}
+          </Badge>
+        </TableCell>
+        <TableCell>
+          {field.isPrimaryKey && (
+            <Badge variant="default" className="bg-blue-600 text-white">PRIMARY</Badge>
+          )}
+        </TableCell>
+        <TableCell>
+          {field.maxLength && (
+            <span className="text-sm text-muted-foreground">
+              {field.maxLength}
+            </span>
+          )}
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  // Render parent field with its children immediately following
+  const renderParentWithChildren = (parentField: FieldSchema, children: FieldSchema[]) => {
+    const isOpen = isExpanded(parentField.fieldName);
+    
+    return (
+      <React.Fragment key={parentField.fieldName}>
+        {/* Parent field row with expand/collapse button */}
+        <TableRow className="bg-slate-700 hover:bg-slate-600 border-b border-slate-500">
+          <TableCell className="font-medium">
+            <button
+              onClick={() => toggleSection(parentField.fieldName)}
+              className="flex items-center gap-2 hover:bg-slate-800 px-3 py-2 rounded-md transition-colors duration-200 text-white"
+            >
+              {isOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+              <span>{getDataTypeIcon(parentField.dataType)}</span>
+              <span className="font-semibold text-white">{parentField.fieldName}</span>
+              <Badge variant="secondary" className="text-xs bg-slate-500 text-white border-slate-400">
+                {children.length} fields
+              </Badge>
+            </button>
+          </TableCell>
+          <TableCell>
+            <Badge variant="outline" className="font-mono bg-slate-600 text-white border-slate-500">
+              {parentField.dataType}
+            </Badge>
+          </TableCell>
+          <TableCell>
+            <Badge 
+              variant={parentField.isNullable ? 'secondary' : 'destructive'}
+              className={parentField.isNullable ? 'bg-slate-500 text-white' : 'bg-red-600 text-white'}
+            >
+              {parentField.isNullable ? 'YES' : 'NO'}
+            </Badge>
+          </TableCell>
+          <TableCell>
+            {parentField.isPrimaryKey && (
+              <Badge variant="default" className="bg-blue-600 text-white">PRIMARY</Badge>
+            )}
+          </TableCell>
+          <TableCell>
+            {parentField.maxLength && (
+              <span className="text-sm text-slate-300">
+                {parentField.maxLength}
+              </span>
+            )}
+          </TableCell>
+        </TableRow>
+        
+        {/* Child fields - shown immediately after parent when expanded */}
+        {isOpen && children.map(field => renderFieldRow(field, 1))}
+      </React.Fragment>
+    );
   };
 
   if (loading) {
@@ -338,53 +515,62 @@ export function SchemaViewer({
             <div className="text-center py-8 text-muted-foreground">
               No fields detected in this schema
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Field Name</TableHead>
-                    <TableHead>Data Type</TableHead>
-                    <TableHead>Nullable</TableHead>
-                    <TableHead>Key</TableHead>
-                    <TableHead>Max Length</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {schema.fields.map((field, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium flex items-center gap-2">
-                        <span>{getDataTypeIcon(field.dataType)}</span>
-                        {field.fieldName}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="font-mono">
-                          {field.dataType}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={field.isNullable ? 'secondary' : 'destructive'}>
-                          {field.isNullable ? 'YES' : 'NO'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {field.isPrimaryKey && (
-                          <Badge variant="default">PRIMARY</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {field.maxLength && (
-                          <span className="text-sm text-muted-foreground">
-                            {field.maxLength}
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          ) : (() => {
+            const organizedFields = organizeFieldsHierarchically(schema.fields);
+            const parentFields = organizedFields.filter(item => item.type === 'parent').map(item => item.field.fieldName);
+            
+            return (
+              <div className="space-y-4">
+                {/* Add expand/collapse all button */}
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    {organizedFields.filter(item => item.type === 'root').length} root fields, {parentFields.length} nested sections
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => setExpandedSections(parentFields)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Expand All
+                    </Button>
+                    <Button
+                      onClick={() => setExpandedSections([])}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Collapse All
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="overflow-x-auto">
+                  <Table className="bg-slate-900">
+                    <TableHeader>
+                      <TableRow className="bg-slate-700 border-b border-slate-600">
+                        <TableHead className="text-white font-semibold">Field Name</TableHead>
+                        <TableHead className="text-white font-semibold">Data Type</TableHead>
+                        <TableHead className="text-white font-semibold">Nullable</TableHead>
+                        <TableHead className="text-white font-semibold">Key</TableHead>
+                        <TableHead className="text-white font-semibold">Max Length</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {/* Render fields in hierarchical order */}
+                      {organizedFields.map((item, index) => {
+                        if (item.type === 'root') {
+                          return renderFieldRow(item.field, 0);
+                        } else if (item.type === 'parent' && item.children) {
+                          return renderParentWithChildren(item.field, item.children);
+                        }
+                        return null;
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            );
+          })()}
           
           <div className="mt-4 text-sm text-muted-foreground">
             Total Fields: {schema.totalFields}
