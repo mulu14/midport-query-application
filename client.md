@@ -36,11 +36,13 @@ The Midport Query Platform is a powerful multi-tenant SaaS application designed 
 To connect to your Infor LN system, you'll need:
 
 #### Basic Information
+
 - **Tenant Name**: Unique identifier for your tenant (e.g., `MIDPORT_DEM`)
 - **Environment Version**: Your Infor environment version
 - **Active Status**: Enable/disable the credential
 
 #### OAuth2 Configuration
+
 - **Client ID**: Your ION API client identifier
 - **Client Secret**: Your ION API client secret
 - **Portal URL**: Your Infor portal URL (e.g., `https://mingle-sso.eu1.inforcloudsuite.com:443/MIDPORT_DEM/as/`)
@@ -48,10 +50,12 @@ To connect to your Infor LN system, you'll need:
 - **Tenant ID**: Your tenant identifier
 
 #### Service Account Keys
+
 - **Service Account Access Key**: Your service account access key
 - **Service Account Secret Key**: Your service account secret key
 
 #### Optional Configuration
+
 - **Client Name**: Your application name
 - **OAuth2 Endpoints**: Token, authorization, and revoke endpoints
 - **Scope**: OAuth2 scope permissions
@@ -81,6 +85,7 @@ To connect to your Infor LN system, you'll need:
 The platform automatically discovers available services for each tenant:
 
 #### SOAP Services
+
 - **ServiceCall_v2**: Service call management
 - **Customer_v1**: Customer data management
 - **WarehouseOrder_v2**: Warehouse order processing
@@ -88,6 +93,7 @@ The platform automatically discovers available services for each tenant:
 - And many more...
 
 #### REST Services
+
 - **Purchase Order**: Purchase order management
 - **Sales Order**: Sales order processing
 - **Employee Master Data**: Employee information
@@ -104,16 +110,19 @@ The platform automatically discovers available services for each tenant:
 ### Query Types
 
 #### List Queries
+
 - Retrieve all records from a service
 - Apply filters and sorting
 - Paginate results
 
 #### Filtered Queries
+
 - Use SQL-like syntax for filtering
 - Support for comparison operators (eq, in, etc.)
 - Complex filter conditions
 
 #### Custom Queries
+
 - Direct API calls with custom parameters
 - SOAP envelope customization
 - REST endpoint configuration
@@ -131,6 +140,7 @@ The platform automatically discovers available services for each tenant:
 The platform is fully responsive and optimized for all device types:
 
 #### Desktop Experience (1024px+)
+
 - **Full Sidebar**: Complete service tree with expandable sections
 - **Multi-column Layout**: Efficient use of screen real estate
 - **Hover Interactions**: Rich hover effects and tooltips
@@ -138,6 +148,7 @@ The platform is fully responsive and optimized for all device types:
 - **Large Query Editor**: Spacious interface for complex queries
 
 #### Tablet Experience (768px - 1023px)
+
 - **Adaptive Sidebar**: Collapsible sidebar with touch-friendly controls
 - **Responsive Forms**: Optimized form layouts for touch input
 - **Gesture Support**: Swipe navigation and touch interactions
@@ -145,6 +156,7 @@ The platform is fully responsive and optimized for all device types:
 - **Touch-friendly Buttons**: Larger tap targets for easier interaction
 
 #### Mobile Experience (320px - 767px)
+
 - **Mobile-first Navigation**: Hamburger menu with slide-out sidebar
 - **Stacked Layouts**: Single-column layouts for optimal readability
 - **Touch-optimized Controls**: Large buttons and touch-friendly inputs
@@ -153,6 +165,7 @@ The platform is fully responsive and optimized for all device types:
 - **Thumb-friendly Design**: Controls positioned for easy thumb access
 
 #### Key Mobile Features
+
 - **Responsive Credential Forms**: Forms adapt to screen size with appropriate input types
 - **Mobile Query Interface**: Simplified query editor with mobile keyboard support
 - **Touch Gestures**: Swipe to navigate between services and results
@@ -161,6 +174,7 @@ The platform is fully responsive and optimized for all device types:
 - **Accessibility**: Full screen reader support and accessibility compliance
 
 #### Cross-Platform Compatibility
+
 - **iOS Safari**: Fully supported with Safari-specific optimizations
 - **Android Chrome**: Optimized for Android devices and Chrome browser
 - **Windows Mobile**: Compatible with Windows mobile browsers
@@ -170,12 +184,14 @@ The platform is fully responsive and optimized for all device types:
 ## Security Features
 
 ### Data Protection
+
 - All credentials are securely stored
 - Sensitive fields are masked by default
 - OAuth2 token management
 - Secure API communication
 
 ### Access Control
+
 - Tenant-based data isolation
 - Service account authentication
 - Encrypted credential storage
@@ -185,18 +201,21 @@ The platform is fully responsive and optimized for all device types:
 ### Common Issues
 
 #### Connection Problems
+
 - Verify portal URL format
 - Check service account keys
 - Ensure tenant ID is correct
 - Validate OAuth2 configuration
 
 #### Query Errors
+
 - Check service availability
 - Verify API permissions
 - Review query syntax
 - Check tenant status
 
 #### Authentication Issues
+
 - Refresh service account tokens
 - Verify client credentials
 - Check OAuth2 endpoints
@@ -205,6 +224,7 @@ The platform is fully responsive and optimized for all device types:
 ### Error Messages
 
 The platform provides detailed error messages for:
+
 - Validation errors
 - Connection failures
 - Authentication problems
@@ -213,18 +233,21 @@ The platform provides detailed error messages for:
 ## Best Practices
 
 ### Credential Management
+
 - Regularly rotate service account keys
 - Use descriptive tenant names
 - Keep credentials up to date
 - Monitor active status
 
 ### Query Optimization
+
 - Use appropriate filters
 - Limit result sets when possible
 - Test queries on small datasets first
 - Use pagination for large results
 
 ### Security
+
 - Never share credentials
 - Use strong, unique passwords
 - Regularly review access logs
@@ -233,12 +256,14 @@ The platform provides detailed error messages for:
 ## Support
 
 ### Getting Help
+
 - Check the troubleshooting section
 - Review error messages carefully
 - Contact your system administrator
 - Refer to Infor ION API documentation
 
 ### Platform Information
+
 - **Version**: Current platform version
 - **Last Updated**: Platform update information
 - **Supported APIs**: List of supported ION API versions
@@ -248,6 +273,7 @@ The platform provides detailed error messages for:
 ### Supported ION API Services
 
 #### SOAP Services
+
 - ServiceCall_v2
 - Customer_v1
 - WarehouseOrder_v2
@@ -256,6 +282,7 @@ The platform provides detailed error messages for:
 - And many more...
 
 #### REST Services
+
 - Purchase Order Management
 - Sales Order Processing
 - Employee Master Data
@@ -265,16 +292,19 @@ The platform provides detailed error messages for:
 ### Query Syntax
 
 #### Basic List Query
+
 ```
 SELECT * FROM ServiceCall_v2
 ```
 
 #### Filtered Query
+
 ```
 SELECT * FROM Customer_v1 WHERE customerId = 'CUST001'
 ```
 
 #### Complex Filter
+
 ```
 SELECT * FROM Order_v1 WHERE status IN ('OPEN', 'PENDING') AND amount > 1000
 ```

@@ -46,8 +46,37 @@ export interface DatabaseData {
 
 /**
  * SQLite database manager class for handling all database operations
- * Provides CRUD operations for databases and tables, schema management, and migrations
+ * 
  * @class SQLiteManager
+ * 
+ * @description
+ * Central manager for the Midport Query Platform's SQLite database operations.
+ * Handles both local database connections and remote ION API tenant configurations.
+ * 
+ * **Database File:** `midport_query_platform.db` (created in project root)
+ * 
+ * **Tables Managed:**
+ * 1. `databases` - Local database connections (PostgreSQL, MySQL, MongoDB, etc.)
+ * 2. `database_tables` - Table metadata for local databases
+ * 3. `remote_api_databases` - ION API tenant configurations
+ * 4. `remote_api_tables` - Services/tables within ION API tenants
+ * 5. `remote_api_expand_fields` - OData expand fields for REST APIs
+ * 
+ * **Key Features:**
+ * - Singleton pattern: Single database connection per application lifecycle
+ * - Automatic migrations: Schema updates run automatically on initialization
+ * - Multi-tenant support: Tenant isolation for ION API configurations
+ * - SOAP + REST support: Handles both API types for ION services
+ * - Transaction safety: Foreign key constraints and CASCADE deletes
+ * 
+ * **Usage Pattern:**
+ * ```typescript
+ * // All methods are static - no instantiation needed
+ * const databases = await SQLiteManager.listDatabases();
+ * const tenant = await SQLiteManager.createRemoteAPIDatabase({...});
+ * ```
+ * 
+ * @see runMigrations() for detailed table schema documentation
  */
 export class SQLiteManager {
   private static db: sqlite3.Database | null = null;
@@ -191,15 +220,75 @@ export class SQLiteManager {
 
   /**
    * Runs database migrations to create and update table schemas
-   * Handles schema changes, column additions, and data migrations
+   * 
    * @private
    * @static
    * @async
    * @throws {Error} If migration fails
+   * 
+   * @description
+   * This function is called ONCE per application lifecycle when the database is first initialized.
+   * It creates 5 tables and handles schema migrations for existing databases.
+   * 
+   * **Execution Frequency:**
+   * - Runs only once when `initialize()` is first called
+   * - Subsequent calls use cached database connection
+   * - Typically executes on first API call after application starts
+   * 
+   * **Tables Created:**
+   * 
+   * 1. **databases** - Local database connections (PostgreSQL, MySQL, MongoDB, etc.)
+   *    - Used by: `/api/databases/*` endpoints
+   *    - Purpose: Store and manage connections to external databases
+   * 
+   * 2. **database_tables** - Metadata about tables in local databases
+   *    - Used by: Internal queries in SQLiteManager methods
+   *    - Purpose: Track table names and record counts for local databases
+   * 
+   * 3. **remote_api_databases** - ION API tenant configurations
+   *    - Used by: `/api/remote-databases/*` endpoints
+   *    - Purpose: Store tenant/database configurations for ION APIs
+   *    - Key fields: tenant_name, base_url, services, status
+   * 
+   * 4. **remote_api_tables** - Services/tables available in each ION API tenant
+   *    - Used by: `/api/remote-databases/[id]/tables/*` endpoints
+   *    - Purpose: Store table/service definitions (SOAP and REST)
+   *    - Key fields: name, endpoint, api_type, odata_service, entity_name
+   * 
+   * 5. **remote_api_expand_fields** - OData expand fields for REST APIs
+   *    - Used by: `/api/remote-databases/[id]/tables/[tableName]/expand-fields` endpoints
+   *    - Purpose: Store nested data fetch configurations for REST/OData APIs
+   *    - Key fields: table_id, field_name, is_active
+   * 
+   * **Migration Features:**
+   * - Idempotent: Safe to run multiple times (uses IF NOT EXISTS)
+   * - Backward compatible: Handles legacy schema changes
+   * - Data preservation: Migrates existing data when changing schemas
+   * - Column additions: Adds missing columns to existing tables
+   * - Index creation: Creates performance indexes automatically
+   * 
+   * **Database Relationships:**
+   * ```
+   * databases (1:N) → database_tables
+   * remote_api_databases (1:N) → remote_api_tables (1:N) → remote_api_expand_fields
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Automatically called during initialization
+   * const db = await SQLiteManager.initialize();
+   * // runMigrations() has already executed
+   * ```
    */
   private static async runMigrations(): Promise<void> {
     try {
-      // Create databases table
+      // ========================================================================
+      // TABLE 1: databases
+      // ========================================================================
+      // Purpose: Store local database connections (PostgreSQL, MySQL, MongoDB, etc.)
+      // Used by: /api/databases/* endpoints
+      // Relationships: Parent to database_tables (1:N)
+      // ========================================================================
       await this.apiExec(`
         CREATE TABLE IF NOT EXISTS databases (
           id TEXT PRIMARY KEY,
@@ -213,7 +302,13 @@ export class SQLiteManager {
         )
       `);
 
-      // Create tables metadata table
+      // ========================================================================
+      // TABLE 2: database_tables
+      // ========================================================================
+      // Purpose: Store metadata about tables within local databases
+      // Used by: Internal SQLiteManager queries (listDatabases, findDatabaseById, etc.)
+      // Relationships: Child of databases (N:1)
+      // ========================================================================
       await this.apiExec(`
         CREATE TABLE IF NOT EXISTS database_tables (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -225,7 +320,14 @@ export class SQLiteManager {
         )
       `);
 
-      // Create remote API databases table
+      // ========================================================================
+      // TABLE 3: remote_api_databases
+      // ========================================================================
+      // Purpose: Store ION API tenant configurations (main tenant/database records)
+      // Used by: /api/remote-databases/* endpoints, lib/RemoteAPIContext.tsx
+      // Relationships: Parent to remote_api_tables (1:N)
+      // Key fields: tenant_name (unique), base_url, services, status
+      // ========================================================================
       await this.apiExec(`
         CREATE TABLE IF NOT EXISTS remote_api_databases (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -240,7 +342,12 @@ export class SQLiteManager {
         )
       `);
 
-      // Migrate existing TEXT id to INTEGER id if needed
+      // ========================================================================
+      // MIGRATION: Convert TEXT id to INTEGER id (Legacy Support)
+      // ========================================================================
+      // Purpose: Handle old databases where id was TEXT instead of INTEGER
+      // Note: This migration only runs if legacy schema is detected
+      // ========================================================================
       try {
         const columns = await this.apiGet(`PRAGMA table_info(remote_api_databases)`);
         const idColumn = columns.find((col: any) => col.name === 'id');
@@ -278,7 +385,12 @@ export class SQLiteManager {
         // Migration likely already completed
       }
 
-      // Migration for existing tables - check if columns exist and add if needed
+      // ========================================================================
+      // MIGRATION: Add missing columns to remote_api_databases (Legacy Support)
+      // ========================================================================
+      // Purpose: Add columns that were added after initial schema
+      // Note: These migrations only run for old databases missing these columns
+      // ========================================================================
       try {
         const columns = await this.apiGet(`PRAGMA table_info(remote_api_databases)`);
 
@@ -303,7 +415,14 @@ export class SQLiteManager {
         // Migration error (likely table is new)
       }
 
-      // Create remote API tables table
+      // ========================================================================
+      // TABLE 4: remote_api_tables
+      // ========================================================================
+      // Purpose: Store tables/services available within each ION API tenant
+      // Used by: /api/remote-databases/[id]/tables/* endpoints
+      // Relationships: Child of remote_api_databases (N:1), Parent to remote_api_expand_fields (1:N)
+      // Key fields: name, endpoint, api_type (soap/rest), odata_service, entity_name
+      // ========================================================================
       await this.apiExec(`
         CREATE TABLE IF NOT EXISTS remote_api_tables (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -320,7 +439,14 @@ export class SQLiteManager {
         )
       `);
 
-      // Create remote API expand fields table (one-to-many with tables)
+      // ========================================================================
+      // TABLE 5: remote_api_expand_fields
+      // ========================================================================
+      // Purpose: Store OData expand fields for REST API tables (related data to fetch)
+      // Used by: /api/remote-databases/[id]/tables/[tableName]/expand-fields endpoints
+      // Relationships: Child of remote_api_tables (N:1)
+      // Key fields: table_id, field_name (unique per table), is_active
+      // ========================================================================
       await this.apiExec(`
         CREATE TABLE IF NOT EXISTS remote_api_expand_fields (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -336,7 +462,12 @@ export class SQLiteManager {
       `);
 
 
-      // Migration for remote_api_tables - add new columns if they don't exist
+      // ========================================================================
+      // MIGRATION: Add missing columns to remote_api_tables (Legacy Support)
+      // ========================================================================
+      // Purpose: Add api_type, odata_service, entity_name, updated_at columns
+      // Note: These migrations support transition from SOAP-only to SOAP+REST
+      // ========================================================================
       try {
         const tableColumns = await this.apiGet(`PRAGMA table_info(remote_api_tables)`);
         
@@ -370,7 +501,12 @@ export class SQLiteManager {
         // Migration error (likely table is new or already migrated)
       }
 
-      // Create indexes for better performance
+      // ========================================================================
+      // INDEXES: Performance optimization
+      // ========================================================================
+      // Purpose: Speed up common queries on frequently accessed columns
+      // All indexes use IF NOT EXISTS to prevent duplicate index errors
+      // ========================================================================
       await this.apiExec(`
         CREATE INDEX IF NOT EXISTS idx_databases_name ON databases(name);
         CREATE INDEX IF NOT EXISTS idx_tables_database_id ON database_tables(database_id);

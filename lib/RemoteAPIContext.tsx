@@ -228,6 +228,19 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Use server-side API endpoint for OAuth2 and API calls
+      console.log('🚀 API Request Configuration:', {
+        apiType: config.apiType,
+        tenant: config.tenant,
+        table: config.table,
+        action: config.action,
+        oDataService: config.oDataService,
+        entityName: config.entityName,
+        expandFields: config.expandFields,
+        parameters: config.parameters,
+        fullUrl: config.fullUrl,
+        sqlQuery: config.sqlQuery
+      });
+      
       const response = await fetch('/api/remote-query', {
         method: 'POST',
         headers: {

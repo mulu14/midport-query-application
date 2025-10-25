@@ -8,7 +8,7 @@
 import type { APIRequestConfig, RemoteAPIQueryResult, StoredOAuth2Token } from '@/Entities/RemoteAPI';
 import { OAuth2ConfigManager } from './OAuth2ConfigManager';
 import { TenantConfigManager } from './TenantConfigManager';
-import { SchemaExtractor } from './utils/SchemaExtractor';
+import { SchemaExtractor, type TableSchema } from './utils/SchemaExtractor';
 
   /**
    * REST API Manager class for handling ION OData API operations
@@ -295,14 +295,14 @@ export class RestAPIManager {
 
       // Get tenant-specific headers from database by tenant name
       const tenant = await TenantConfigManager.getTenantByName(config.tenant);
-      const tenantHeaders = tenant ? 
+      const tenantHeaders: { lnCompany: string | null; lnIdentity: string | null } = tenant ? 
         await TenantConfigManager.getTenantInforHeaders(tenant.id) : 
-        {};
+        { lnCompany: null, lnIdentity: null };
         
       // Convert to HTTP header format
       const httpHeaders: Record<string, string> = {};
       if (tenantHeaders.lnCompany) {
-        httpHeaders['X-Infor-LnCompany'] = tenantHeaders.lnCompany;
+        httpHeaders['X-Infor-LnCompany'] = tenantHeaders.lnCompany; 
       }
       if (tenantHeaders.lnIdentity) {
         httpHeaders['X-Infor-LnIdentity'] = tenantHeaders.lnIdentity;
@@ -338,7 +338,7 @@ export class RestAPIManager {
       const parsedData = this.parseODataResponse(responseData, config.entityName || config.table, limit);
 
       // Extract schema metadata from the parsed response
-      let schemaMetadata = null;
+      let schemaMetadata: TableSchema | undefined = undefined;
       try {
         if (parsedData.records && parsedData.records.length > 0) {
           // Create a result object that matches RemoteAPIQueryResult interface

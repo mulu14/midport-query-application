@@ -89,6 +89,8 @@ export interface RemoteAPITenant {
   id: string;
   /** Display name of the tenant (e.g., "MIDPORT_DEM") */
   name: string;
+  /** Tenant name (unique identifier, e.g., "MIDPORT_DEM") */
+  tenantName?: string;
   /** Array of tables available in this tenant */
   tables: RemoteAPITable[];
   /** Current connection status of the tenant */
