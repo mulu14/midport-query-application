@@ -31,3 +31,21 @@ export type {
   EncryptedTenantConfig,
   IONAPIConfig 
 } from './TenantConfig';
+
+// Authentication entity exports
+export type {
+  User,
+  UserSession,
+  LoginRequest,
+  LoginResponse,
+  SignUpRequest,
+  SignUpResponse,
+  AuthErrorResponse,
+  DatabaseUser,
+  PasswordValidationRules,
+  UsernameValidationRules,
+  TenantValidationRules,
+  AuthValidationConfig
+} from './Auth';
+
+export { DEFAULT_AUTH_VALIDATION } from './Auth';
