@@ -64,7 +64,7 @@ export default function IONAPIResultsDisplay({ result }: IONAPIResultsDisplayPro
     hasSoldToBPRef: result.data?.records?.[0] ? 'SoldToBPRef' in result.data.records[0] : 'No first record'
   });
   // Enhanced function to render values while preserving structure and showing key nested data
-  const renderComplexValue = (value: any, fieldName?: string, recordIndex?: number): string | JSX.Element => {
+  const renderComplexValue = (value: any, fieldName?: string, recordIndex?: number): React.ReactNode => {
     // Create unique identifier for arrays to track expand/collapse state
     const arrayId = `${recordIndex ?? 'root'}-${fieldName ?? 'unknown'}`;
     if (value === null || value === undefined) {

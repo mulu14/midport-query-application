@@ -6,7 +6,7 @@
  */
 
 // Try different import methods for compatibility
-let createCipherGCM: any, createDecipherGCM: any, randomBytes: any, createHash: any;
+let createCipherGCM: any, createDecipherGCM: any, randomBytes: any, createHash: any, pbkdf2Sync: any;
 
 try {
   // Modern Node.js import
@@ -15,6 +15,7 @@ try {
   createDecipherGCM = crypto.createDecipherGCM;
   randomBytes = crypto.randomBytes;
   createHash = crypto.createHash;
+  pbkdf2Sync = crypto.pbkdf2Sync;
 } catch (error) {
   // Fallback - disable encryption if crypto is not available
   console.warn('Crypto module not available, using fallback');
@@ -138,6 +139,90 @@ Using temporary key for current session.
    */
   static generateId(): string {
     return randomBytes(16).toString('hex');
+  }
+
+  /**
+   * Encrypt username for storage
+   * WARNING: Encrypting usernames instead of storing them in plain text reduces security.
+   * This makes it harder to implement proper security measures and should be avoided in production.
+   * @param username - Plain text username
+   * @returns Encrypted username
+   */
+  static encryptUsername(username: string): string {
+    return this.encrypt(username);
+  }
+
+  /**
+   * Decrypt username for comparison
+   * @param encryptedUsername - Encrypted username
+   * @returns Decrypted username
+   */
+  static decryptUsername(encryptedUsername: string): string {
+    return this.decrypt(encryptedUsername);
+  }
+
+  /**
+   * Encrypt password for storage
+   * WARNING: Encrypting passwords instead of hashing them is a security risk.
+   * If the encryption key is compromised, all passwords are exposed. Use hashPassword() instead.
+   * @param password - Plain text password
+   * @returns Encrypted password
+   */
+  static encryptPassword(password: string): string {
+    return this.encrypt(password);
+  }
+
+  /**
+   * Decrypt password for verification
+   * @param encryptedPassword - Encrypted password
+   * @returns Decrypted password
+   */
+  static decryptPassword(encryptedPassword: string): string {
+    return this.decrypt(encryptedPassword);
+  }
+
+  /**
+   * Hash password using PBKDF2 with salt (LEGACY - kept for backward compatibility)
+   * @param password - Plain text password
+   * @returns Salted hash in format "salt:hash"
+   */
+  static hashPassword(password: string): string {
+    try {
+      if (!randomBytes || !pbkdf2Sync) {
+        throw new Error('Crypto not available');
+      }
+
+      const salt = randomBytes(16).toString('hex');
+      const hash = pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+      return `${salt}:${hash}`;
+    } catch (error) {
+      throw new Error(`Password hashing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Verify password against stored hash (LEGACY - kept for backward compatibility)
+   * @param password - Plain text password
+   * @param storedHash - Stored hash in format "salt:hash"
+   * @returns True if password matches
+   */
+  static verifyPassword(password: string, storedHash: string): boolean {
+    try {
+      if (!pbkdf2Sync) {
+        throw new Error('Crypto not available');
+      }
+
+      const [salt, hash] = storedHash.split(':');
+      if (!salt || !hash) {
+        return false;
+      }
+
+      const testHash = pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+      return testHash === hash;
+    } catch (error) {
+      console.error('Password verification failed:', error);
+      return false;
+    }
   }
 }
 

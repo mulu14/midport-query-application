@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sqlite3 from 'sqlite3';
 import { join } from 'path';
-import * as crypto from 'crypto';
+import { EncryptionUtil } from '@/lib/utils/encryption';
 import type { SignUpRequest, SignUpResponse, AuthErrorResponse } from '@/Entities/Auth';
 
 // Database path
@@ -46,14 +46,6 @@ function initDatabase(): Promise<sqlite3.Database> {
   });
 }
 
-/**
- * Hash password with salt
- */
-function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-  return `${salt}:${hash}`;
-}
 
 /**
  * POST /api/auth/signup
@@ -91,9 +83,10 @@ export async function POST(request: NextRequest) {
 
     db = await initDatabase();
 
-    // Check if username already exists
+    // Check if username already exists (encrypt username for lookup)
+    const encryptedUsername = EncryptionUtil.encryptUsername(username);
     const existingUser = await new Promise<any>((resolve, reject) => {
-      db!.get('SELECT id FROM users WHERE username = ?', [username], (err, row) => {
+      db!.get('SELECT id FROM users WHERE username = ?', [encryptedUsername], (err, row) => {
         if (err) {
           reject(err);
           return;
@@ -110,14 +103,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse, { status: 409 });
     }
 
-    // Hash password
-    const passwordHash = hashPassword(password);
+    // Encrypt password (username already encrypted above)
+    const encryptedPassword = EncryptionUtil.encryptPassword(password);
 
     // Insert new user
     await new Promise<void>((resolve, reject) => {
       db!.run(
         'INSERT INTO users (username, password_hash, tenant) VALUES (?, ?, ?)',
-        [username, passwordHash, tenant],
+        [encryptedUsername, encryptedPassword, tenant],
         (err) => {
           if (err) {
             reject(err);

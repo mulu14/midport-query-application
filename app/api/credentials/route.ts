@@ -8,6 +8,74 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TenantConfigManager } from '@/lib/TenantConfigManager';
 import { NewTenantConfig, TenantSummary } from '@/Entities/TenantConfig';
+import { EncryptionUtil } from '@/lib/utils/encryption';
+import sqlite3 from 'sqlite3';
+import { join } from 'path';
+
+// Database path for user authentication
+const userDbPath = join(process.cwd(), 'user-auth.db');
+
+/**
+ * Validate that service account credentials match user credentials for the tenant
+ * @param tenant - The tenant name to validate
+ * @param serviceAccountAccessKey - Should match the user's username
+ * @param serviceAccountSecretKey - Should match the user's password
+ * @returns Promise<boolean> - true if credentials match, false otherwise
+ */
+async function validateUserCredentials(
+  tenant: string,
+  serviceAccountAccessKey: string,
+  serviceAccountSecretKey: string
+): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(userDbPath, (err) => {
+      if (err) {
+        console.error('Error opening user database:', err);
+        resolve(false);
+        return;
+      }
+
+      // Query for users with this tenant
+      db.all('SELECT username, password_hash FROM users WHERE tenant = ?', [tenant], (err, rows: any[]) => {
+        if (err) {
+          console.error('Error querying users:', err);
+          db.close();
+          resolve(false);
+          return;
+        }
+
+        if (rows.length === 0) {
+          console.warn(`No users found for tenant: ${tenant}`);
+          db.close();
+          resolve(false);
+          return;
+        }
+
+        // Check each user in the tenant
+        let foundMatch = false;
+        for (const row of rows) {
+          try {
+            // Decrypt username and password
+            const decryptedUsername = EncryptionUtil.decryptUsername(row.username);
+            const decryptedPassword = EncryptionUtil.decryptPassword(row.password_hash);
+
+            // Check if they match the service account credentials
+            if (decryptedUsername === serviceAccountAccessKey && decryptedPassword === serviceAccountSecretKey) {
+              foundMatch = true;
+              break;
+            }
+          } catch (decryptError) {
+            console.error('Error decrypting user credentials:', decryptError);
+            // Continue checking other users
+          }
+        }
+
+        db.close();
+        resolve(foundMatch);
+      });
+    });
+  });
+}
 
 /**
  * GET /api/tenants - Get all tenant configurations (summaries only)
@@ -100,6 +168,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         lnIdentity: body.ionConfig.lnIdentity || ''
       }
     };
+
+    // Validate that service account credentials match user credentials for this tenant
+    const credentialsValid = await validateUserCredentials(
+      body.tenantName,
+      body.ionConfig.serviceAccountAccessKey,
+      body.ionConfig.serviceAccountSecretKey
+    );
+
+    if (!credentialsValid) {
+      return NextResponse.json(
+        {
+          error: 'Invalid service account credentials',
+          message: 'The service account access key must match a registered username and the service account secret key must match the corresponding password for this tenant.'
+        },
+        { status: 400 }
+      );
+    }
 
     const createdTenant = await TenantConfigManager.createTenantCredential(newTenantConfig);
     

@@ -75,19 +75,3 @@ BEGIN
     UPDATE tenant_credentials SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
 
--- Sample data structure (commented out - will be inserted via code)
-/*
-INSERT INTO tenant_credentials (
-    id, 
-    tenant_name, 
-    display_name, 
-    environment_version,
-    encrypted_ion_config
-) VALUES (
-    'tenant_001',
-    'MIDPORT_DEM',
-    'Midport Demo Environment',
-    'V1480769020',
-    'encrypted_json_configuration_here'
-);
-*/

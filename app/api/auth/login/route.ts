@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sqlite3 from 'sqlite3';
 import { join } from 'path';
-import * as crypto from 'crypto';
+import { EncryptionUtil } from '@/lib/utils/encryption';
 import type { LoginRequest, LoginResponse, DatabaseUser, AuthErrorResponse } from '@/Entities/Auth';
 
 // Database path
@@ -46,21 +46,6 @@ function initDatabase(): Promise<sqlite3.Database> {
   });
 }
 
-/**
- * Hash password with salt
- */
-function hashPassword(password: string, salt: string): string {
-  return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-}
-
-/**
- * Verify password
- */
-function verifyPassword(password: string, hash: string): boolean {
-  const [salt, storedHash] = hash.split(':');
-  const testHash = hashPassword(password, salt);
-  return testHash === storedHash;
-}
 
 /**
  * POST /api/auth/login
@@ -83,9 +68,12 @@ export async function POST(request: NextRequest) {
 
     db = await initDatabase();
 
-    // Find user
+    // Encrypt the input username for database lookup
+    const encryptedInputUsername = EncryptionUtil.encryptUsername(username);
+
+    // Find user by encrypted username
     const user = await new Promise<DatabaseUser | undefined>((resolve, reject) => {
-      db!.get('SELECT * FROM users WHERE username = ?', [username], (err, row) => {
+      db!.get('SELECT * FROM users WHERE username = ?', [encryptedInputUsername], (err, row) => {
         if (err) {
           reject(err);
           return;
@@ -102,8 +90,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse, { status: 401 });
     }
 
-    // Verify password
-    if (!verifyPassword(password, user.password_hash)) {
+    // Decrypt stored password and compare with input
+    const decryptedPassword = EncryptionUtil.decryptPassword(user.password_hash);
+    if (decryptedPassword !== password) {
       db.close();
       const errorResponse: AuthErrorResponse = {
         message: 'Invalid username or password'
