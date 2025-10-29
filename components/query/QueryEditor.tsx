@@ -36,13 +36,34 @@ interface QueryEditorProps {
  */
 export default function QueryEditor({ query, onChange, onExecute, isExecuting }: QueryEditorProps) {
   const { selectedDatabase, selectedTable } = useDatabase();
-  const { selectedTenant, selectedTable: remoteSelectedTable } = useRemoteAPI();
+  const { selectedTenant, selectedTable: remoteSelectedTable, baseTableReference } = useRemoteAPI();
   
   // Determine if we're in remote API mode and what type
   const isRemoteAPI = selectedTenant && remoteSelectedTable;
   const apiType = isRemoteAPI ? (remoteSelectedTable as any)?.apiType || 'soap' : null;
   const currentDatabase = isRemoteAPI ? selectedTenant : selectedDatabase;
   const currentTable = isRemoteAPI ? remoteSelectedTable : selectedTable;
+
+  // Get dynamic placeholder based on selected table and API type
+  const getDynamicPlaceholder = () => {
+    if (!currentTable) {
+      return "Select a table from the sidebar to begin querying...";
+    }
+    
+    const tableName = baseTableReference?.table || currentTable.name;
+    
+    if (isRemoteAPI && apiType === 'rest') {
+      return `SELECT * FROM ${tableName} WHERE field = 'value'
+
+Supports: WHERE, JOIN, ORDER BY, LIMIT, BETWEEN, IS NULL`;
+    } else if (isRemoteAPI && apiType === 'soap') {
+      return `SELECT * FROM ${tableName} WHERE field = 'value'
+
+Supports: WHERE, ORDER BY, LIMIT`;
+    } else {
+      return `SELECT * FROM ${tableName} WHERE condition`;
+    }
+  };
 
   return (
     <div className="bg-[#2a6b83] border border-[#1a5f7a] rounded-lg shadow-lg backdrop-blur-sm">
@@ -124,13 +145,35 @@ export default function QueryEditor({ query, onChange, onExecute, isExecuting }:
         <textarea
           value={query}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Write your SQL query here...\n\nExample: SELECT * FROM TableName WHERE condition;"
-          className="w-full h-24 sm:h-32 px-3 sm:px-4 py-2 sm:py-3 bg-[#0f3d4f] border border-[#1a5f7a] rounded-lg font-mono text-sm text-white placeholder:text-[#8bb3cc] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+          placeholder={getDynamicPlaceholder()}
+          className="w-full h-40 sm:h-48 md:h-56 px-3 sm:px-4 py-2 sm:py-3 bg-[#0f3d4f] border border-[#1a5f7a] rounded-lg font-mono text-sm text-white placeholder:text-[#8bb3cc]/60 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y min-h-[120px]"
           spellCheck={false}
+          rows={8}
         />
-        <p className="mt-1 sm:mt-2 text-xs text-[#9bc5d4]">
-          Edit the SQL Statement, and click "Run" to see the result.
-        </p>
+        <div className="mt-2 flex items-center justify-between text-xs">
+          <p className="text-[#9bc5d4]">
+            {baseTableReference ? (
+              <>
+                <span className="font-semibold text-blue-300">{baseTableReference.table}</span>
+                <span className="mx-1.5 text-[#8bb3cc]">•</span>
+                <span className="text-blue-400">{baseTableReference.apiType.toUpperCase()}</span>
+                {isRemoteAPI && apiType === 'rest' && (
+                  <>
+                    <span className="mx-1.5 text-[#8bb3cc]">•</span>
+                    <span className="text-green-400">Supports JOIN & BETWEEN</span>
+                  </>
+                )}
+              </>
+            ) : (
+              'Select a table to start querying'
+            )}
+          </p>
+          {query.trim() && (
+            <p className="text-[#8bb3cc]">
+              {query.split('\n').length} {query.split('\n').length === 1 ? 'line' : 'lines'}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

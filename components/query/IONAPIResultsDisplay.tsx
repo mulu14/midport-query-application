@@ -299,7 +299,7 @@ export default function IONAPIResultsDisplay({ result }: IONAPIResultsDisplayPro
             </h4>
           </div>
 
-          {/* Summary Table View for multiple records */}
+          {/* Summary Table View for multiple records 
           {result.data?.records && result.data.records.length > 1 && (
             <div className="mb-6 overflow-x-auto">
               <h5 className="text-white font-medium mb-3">Summary View</h5>
@@ -360,7 +360,7 @@ export default function IONAPIResultsDisplay({ result }: IONAPIResultsDisplayPro
                 </tbody>
               </table>
             </div>
-          )}
+          )}  */}
 
           <h5 className="text-white font-medium mb-3">Detailed Records</h5>
           <div className="space-y-2">

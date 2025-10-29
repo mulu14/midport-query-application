@@ -1,5 +1,35 @@
 /**
  * @fileoverview SQL WHERE clause parser for converting SQL conditions to ION API filters
+ * 
+ * ⚠️ SHARED UTILITY: This parser is used by BOTH SOAP and REST APIs.
+ * 
+ * ARCHITECTURE:
+ * =============
+ * This file ONLY parses SQL syntax. It does NOT generate SOAP XML or OData queries.
+ * 
+ * Flow:
+ * 1. SQLParser extracts parameters from SQL (field, operator, value)
+ * 2. SOAP: RemoteAPIManager.generateSOAPEnvelope() converts to SOAP XML
+ * 3. REST: RestAPIManager.generateODataQuery() converts to OData $filter
+ * 
+ * The parser output is API-agnostic. Each API manager handles the conversion.
+ * 
+ * SUPPORTED OPERATORS:
+ * ===================
+ * Basic: =, !=, >, <, >=, <=
+ * Advanced: LIKE, IN, BETWEEN, IS NULL, IS NOT NULL
+ * Future: Complex boolean logic with parentheses
+ * 
+ * OUTPUT FORMAT:
+ * ==============
+ * Generates a parameters object with:
+ * - field: value (e.g., Status: 'Active')
+ * - field_operator: 'eq', 'gt', 'between', etc.
+ * - field_value2: (for BETWEEN operator only)
+ * 
+ * Internal metadata (baseTable, baseEndpoint, _operator, _value2) is filtered
+ * by the respective API managers before making API calls.
+ * 
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
  * @date October 2025
@@ -12,17 +42,26 @@
 export interface FilterCondition {
   /** Field/column name */
   field: string;
-  /** Comparison operator (=, !=, >, <, >=, <=, LIKE, IN) */
+  /** Comparison operator (=, !=, >, <, >=, <=, LIKE, IN, BETWEEN, IS NULL, IS NOT NULL) */
   operator: string;
   /** Value to compare against */
-  value: string | number | string[];
+  value: string | number | string[] | null;
   /** ION API comparison operator */
   ionOperator: string;
+  /** Optional second value for BETWEEN operator */
+  value2?: string | number;
 }
 
 /**
  * SQL WHERE clause parser for ION API integration
- * Converts SQL WHERE conditions to ION API filter format
+ * 
+ * ⚠️ SHARED BY BOTH SOAP AND REST: This parser only extracts SQL conditions.
+ * It does NOT generate API-specific requests. That's handled by:
+ * - RemoteAPIManager.generateSOAPEnvelope() for SOAP APIs
+ * - RestAPIManager.generateODataQuery() for REST APIs
+ * 
+ * Converts SQL WHERE conditions to a normalized parameter object.
+ * 
  * @class SQLParser
  */
 export class SQLParser {
@@ -98,6 +137,47 @@ export class SQLParser {
         // This is a special parameter, not a filter condition
         return null;
       }
+    }
+    
+    // Check for IS NOT NULL
+    const isNotNullMatch = condition.match(/(\w+)\s+is\s+not\s+null/i);
+    if (isNotNullMatch) {
+      return {
+        field: isNotNullMatch[1],
+        operator: 'IS NOT NULL',
+        value: null,
+        ionOperator: 'is_not_null'
+      };
+    }
+
+    // Check for IS NULL
+    const isNullMatch = condition.match(/(\w+)\s+is\s+null/i);
+    if (isNullMatch) {
+      return {
+        field: isNullMatch[1],
+        operator: 'IS NULL',
+        value: null,
+        ionOperator: 'is_null'
+      };
+    }
+
+    // Check for BETWEEN
+    const betweenMatch = condition.match(/(\w+)\s+between\s+['"]?([^'"]+)['"]?\s+and\s+['"]?([^'"]+)['"]?/i);
+    if (betweenMatch) {
+      let value1: string | number = betweenMatch[2].trim().replace(/^['"]|['"]$/g, '');
+      let value2: string | number = betweenMatch[3].trim().replace(/^['"]|['"]$/g, '');
+      
+      // Convert to numbers if numeric
+      if (!isNaN(Number(value1))) value1 = Number(value1);
+      if (!isNaN(Number(value2))) value2 = Number(value2);
+      
+      return {
+        field: betweenMatch[1],
+        operator: 'BETWEEN',
+        value: value1,
+        value2: value2,
+        ionOperator: 'between'
+      };
     }
     
     // Regex patterns for different operators
@@ -182,6 +262,15 @@ export class SQLParser {
         if (condition.operator === 'IN') {
           // For IN operator, use array values
           parameters[condition.field] = condition.value;
+        } else if (condition.operator === 'BETWEEN') {
+          // For BETWEEN operator, store both values
+          parameters[condition.field] = condition.value;
+          parameters[`${condition.field}_value2`] = (condition as any).value2;
+          parameters[`${condition.field}_operator`] = condition.ionOperator;
+        } else if (condition.operator === 'IS NULL' || condition.operator === 'IS NOT NULL') {
+          // For IS NULL/IS NOT NULL, store null value
+          parameters[condition.field] = null;
+          parameters[`${condition.field}_operator`] = condition.ionOperator;
         } else {
           // For other operators, use the value directly
           parameters[condition.field] = condition.value;
@@ -241,7 +330,7 @@ export class SQLParser {
   static generateIONFilters(conditions: FilterCondition[]): Array<{
     comparisonOperator: string;
     attributeName: string;
-    instanceValue: string | number | string[];
+    instanceValue: string | number | string[] | null;
   }> {
     return conditions.map(condition => ({
       comparisonOperator: condition.ionOperator,

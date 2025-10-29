@@ -1,5 +1,27 @@
 /**
- * @fileoverview REST API Manager for ION OData API interactions
+ * @fileoverview REST API Manager for ION OData API interactions ONLY
+ * 
+ * ⚠️ CRITICAL: This file handles REST/OData API operations exclusively.
+ * 
+ * ARCHITECTURE SEPARATION:
+ * ========================
+ * - This file (RestAPIManager.ts) → REST/OData APIs ONLY
+ * - RemoteAPIManager.ts → SOAP APIs ONLY
+ * - DO NOT mix SOAP and REST logic in the same file
+ * - Each API type has completely separate request/response handling
+ * 
+ * REST/OData API Specifics:
+ * - Uses HTTP GET/POST/PUT/DELETE with JSON payloads
+ * - OData v4 query parameters ($filter, $expand, $orderby, $top, $skip)
+ * - RESTful URL-based operations
+ * - No SOAP XML envelopes
+ * 
+ * Supported OData Features:
+ * - $filter: WHERE clause conversion with advanced operators (BETWEEN, IS NULL, etc.)
+ * - $expand: JOIN-like navigation property expansion
+ * - $orderby: Sorting
+ * - $top/$skip: Pagination
+ * 
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
  * @date October 2025
@@ -10,12 +32,22 @@ import { OAuth2ConfigManager } from './OAuth2ConfigManager';
 import { TenantConfigManager } from './TenantConfigManager';
 import { SchemaExtractor, type TableSchema } from './utils/SchemaExtractor';
 
-  /**
-   * REST API Manager class for handling ION OData API operations
-   * Provides methods for making authenticated REST requests to Infor ION OData APIs
-   * Implements proper OData v4 standards for ION API
-   * @class RestAPIManager
-   */
+/**
+ * REST API Manager class for handling ION OData API operations
+ * 
+ * ⚠️ WARNING: This class is for REST/OData APIs ONLY. Do not add SOAP logic here.
+ * For SOAP APIs, use RemoteAPIManager.ts instead.
+ * 
+ * Provides methods for:
+ * - Building OData query URLs with $filter, $expand, etc.
+ * - Making authenticated REST requests to Infor ION OData APIs
+ * - Parsing JSON responses
+ * - Converting SQL WHERE clauses to OData $filter syntax
+ * 
+ * Implements proper OData v4 standards for ION API
+ * 
+ * @class RestAPIManager
+ */
 export class RestAPIManager {
   private static readonly BASE_ION_API_URL = 'https://mingle-ionapi.eu1.inforcloudsuite.com';
 
@@ -44,6 +76,29 @@ export class RestAPIManager {
 
   /**
    * Generates OData query parameters from parsed SQL conditions
+   * 
+   * ⚠️ REST/OData ONLY: This method generates OData query strings for REST APIs.
+   * For SOAP APIs, use RemoteAPIManager.generateSOAPEnvelope() instead.
+   * 
+   * PARAMETER FILTERING:
+   * ====================
+   * The following parameters are filtered out and NOT included in the OData query:
+   * - baseTable, baseEndpoint: Internal validation parameters
+   * - limit, offset, timestamp: Handled client-side or separately
+   * - orderBy, orderDirection: Converted to $orderby
+   * - company: Sent as X-Infor-LnCompany header
+   * - expand, $expand: Converted to $expand parameter
+   * - _operator, _value2: Internal SQL parsing metadata
+   * 
+   * ADVANCED OPERATOR SUPPORT (REST ONLY):
+   * ======================================
+   * - BETWEEN: Converted to (field ge value1 and field le value2)
+   * - IS NULL: Converted to field eq null
+   * - IS NOT NULL: Converted to field ne null
+   * - NOT: Converted to not(condition)
+   * - LIKE: Converted to contains(field, 'value')
+   * - IN: Converted to (field eq 'val1' or field eq 'val2')
+   * 
    * @static
    * @param {Record<string, any>} parameters - Parameters from SQL parsing
    * @returns {string} OData query string (e.g., "$filter=Country eq 'Mexico'&$orderby=Name asc")
@@ -60,18 +115,54 @@ export class RestAPIManager {
     
     Object.entries(parameters).forEach(([key, value]) => {
       // Skip utility parameters (including limit - handled client-side)
-      if (['limit', 'offset', 'timestamp', 'orderBy', 'orderDirection', 'serviceType', 'entityType', 'legacyFilter', 'company', 'expand', '$expand'].includes(key)) {
+      if (['limit', 'offset', 'timestamp', 'orderBy', 'orderDirection', 'serviceType', 'entityType', 'legacyFilter', 'company', 'expand', '$expand', 'baseTable', 'baseEndpoint'].includes(key)) {
         return;
       }
       
-      // Skip operator parameters (they're handled with their corresponding field)
-      if (key.endsWith('_operator')) {
+      // Skip operator parameters and special suffixes
+      if (key.endsWith('_operator') || key.endsWith('_value2')) {
         return;
       }
 
       // Get the operator for this field
       const operatorKey = `${key}_operator`;
       const sqlOperator = parameters[operatorKey] || 'eq';
+      
+      // Handle special operators
+      
+      // IS NULL operator
+      if (sqlOperator === 'is_null' || (value === null && sqlOperator === 'eq')) {
+        filterConditions.push(`${key} eq null`);
+        return;
+      }
+      
+      // IS NOT NULL operator
+      if (sqlOperator === 'is_not_null' || (value === null && sqlOperator === 'ne')) {
+        filterConditions.push(`${key} ne null`);
+        return;
+      }
+      
+      // BETWEEN operator - convert to: (field ge value1 and field le value2)
+      if (sqlOperator === 'between') {
+        const value2Key = `${key}_value2`;
+        const value2 = parameters[value2Key];
+        if (value2 !== undefined) {
+          const val1 = typeof value === 'string' ? `'${this.escapeODataValue(value)}'` : value;
+          const val2 = typeof value2 === 'string' ? `'${this.escapeODataValue(value2)}'` : value2;
+          filterConditions.push(`(${key} ge ${val1} and ${key} le ${val2})`);
+          return;
+        }
+      }
+      
+      // NOT operator - negate the condition
+      if (sqlOperator === 'not') {
+        if (typeof value === 'string') {
+          filterConditions.push(`not(${key} eq '${this.escapeODataValue(value)}')`);
+        } else {
+          filterConditions.push(`not(${key} eq ${value})`);
+        }
+        return;
+      }
       
       // Convert SQL operators to OData operators
       const oDataOperator = this.convertToODataOperator(sqlOperator);
@@ -81,9 +172,18 @@ export class RestAPIManager {
         // Handle IN operator - convert to multiple OR conditions
         const inConditions = value.map(v => `${key} eq '${this.escapeODataValue(v)}'`).join(' or ');
         filterConditions.push(`(${inConditions})`);
+      } else if (value === null) {
+        // Handle null values
+        filterConditions.push(`${key} ${oDataOperator} null`);
       } else if (typeof value === 'string') {
-        filterConditions.push(`${key} ${oDataOperator} '${this.escapeODataValue(value)}'`);
+        // Handle LIKE/contains operator
+        if (oDataOperator === 'contains') {
+          filterConditions.push(`contains(${key}, '${this.escapeODataValue(value)}')`);
+        } else {
+          filterConditions.push(`${key} ${oDataOperator} '${this.escapeODataValue(value)}'`);
+        }
       } else {
+        // Handle numeric and boolean values
         filterConditions.push(`${key} ${oDataOperator} ${value}`);
       }
     });
@@ -155,12 +255,12 @@ export class RestAPIManager {
     
     Object.entries(parameters).forEach(([key, value]) => {
       // Skip utility parameters (including limit - handled client-side)
-      if (['limit', 'offset', 'timestamp', 'orderBy', 'orderDirection', 'serviceType', 'entityType', 'legacyFilter', 'company', 'expand', '$expand'].includes(key)) {
+      if (['limit', 'offset', 'timestamp', 'orderBy', 'orderDirection', 'serviceType', 'entityType', 'legacyFilter', 'company', 'expand', '$expand', 'baseTable', 'baseEndpoint'].includes(key)) {
         return;
       }
       
-      // Skip operator parameters (they're handled with their corresponding field)
-      if (key.endsWith('_operator')) {
+      // Skip operator parameters and special suffixes
+      if (key.endsWith('_operator') || key.endsWith('_value2')) {
         return;
       }
 
@@ -205,7 +305,7 @@ export class RestAPIManager {
    * Converts SQL operators to OData operators
    * @private
    * @static
-   * @param {string} sqlOperator - SQL operator (eq, ne, gt, lt, ge, le, like)
+   * @param {string} sqlOperator - SQL operator (eq, ne, gt, lt, ge, le, like, between, is_null, is_not_null, not)
    * @returns {string} OData operator
    */
   private static convertToODataOperator(sqlOperator: string): string {
@@ -216,7 +316,11 @@ export class RestAPIManager {
       'lt': 'lt',
       'ge': 'ge',
       'le': 'le',
-      'like': 'contains' // OData uses 'contains' for LIKE functionality
+      'like': 'contains', // OData uses 'contains' for LIKE functionality
+      'between': 'between', // Handled specially in generateODataQuery
+      'is_null': 'eq', // field eq null
+      'is_not_null': 'ne', // field ne null  
+      'not': 'not' // not(condition)
     };
 
     return operatorMap[sqlOperator] || 'eq';

@@ -1,5 +1,21 @@
 /**
- * @fileoverview Remote API Manager for SOAP API interactions
+ * @fileoverview Remote API Manager for SOAP API interactions ONLY
+ * 
+ * ⚠️ CRITICAL: This file handles SOAP API operations exclusively.
+ * 
+ * ARCHITECTURE SEPARATION:
+ * ========================
+ * - This file (RemoteAPIManager.ts) → SOAP APIs ONLY
+ * - RestAPIManager.ts → REST/OData APIs ONLY
+ * - DO NOT mix SOAP and REST logic in the same file
+ * - Each API type has completely separate request/response handling
+ * 
+ * SOAP API Specifics:
+ * - Uses XML envelopes (SOAP 1.1/1.2)
+ * - Action-based operations (List, Create, Update, Delete)
+ * - FilterExpression/ComparisonExpression for queries
+ * - No OData query parameters ($filter, $expand, etc.)
+ * 
  * @author Mulugeta Forsido
  * @company Midport Scandinavia
  * @date October 2025
@@ -10,8 +26,16 @@ import { OAuth2ConfigManager } from './OAuth2ConfigManager';
 import { SchemaExtractor, TableSchema } from './utils/SchemaExtractor';
 
 /**
- * Remote API Manager class for handling ION API operations
- * Provides methods for making authenticated SOAP requests to Infor ION APIs
+ * Remote API Manager class for handling ION SOAP API operations
+ * 
+ * ⚠️ WARNING: This class is for SOAP APIs ONLY. Do not add REST/OData logic here.
+ * For REST APIs, use RestAPIManager.ts instead.
+ * 
+ * Provides methods for:
+ * - Building SOAP XML envelopes
+ * - Making authenticated SOAP requests to Infor ION APIs
+ * - Parsing SOAP XML responses
+ * 
  * @class RemoteAPIManager
  */
 export class RemoteAPIManager {
@@ -30,6 +54,18 @@ export class RemoteAPIManager {
 
   /**
    * Generates a SOAP envelope for ION API requests with company parameter support
+   * 
+   * ⚠️ SOAP ONLY: This method generates XML envelopes for SOAP APIs.
+   * For REST/OData APIs, use RestAPIManager.generateODataQuery() instead.
+   * 
+   * PARAMETER FILTERING:
+   * ====================
+   * The following parameters are filtered out and NOT sent to the SOAP API:
+   * - baseTable, baseEndpoint: Internal validation parameters
+   * - limit, offset, timestamp: Handled client-side or in request headers
+   * - orderBy, orderDirection: Converted to SOAP-specific format
+   * - _operator, _value2: Internal SQL parsing metadata
+   * 
    * @static
    * @param {string} action - The SOAP action to perform (e.g., 'list', 'create', 'update', 'delete')
    * @param {Record<string, any>} [parameters={}] - Optional parameters for the request
@@ -65,7 +101,10 @@ export class RemoteAPIManager {
             key !== 'serviceType' &&
             key !== 'entityType' &&
             key !== 'legacyFilter' &&
-            !key.endsWith('_operator')
+            key !== 'baseTable' &&
+            key !== 'baseEndpoint' &&
+            !key.endsWith('_operator') &&
+            !key.endsWith('_value2')
           )
           .map(([key, value]) => {
             // Check if there's a specific operator for this field
@@ -116,6 +155,15 @@ export class RemoteAPIManager {
     } else {
       // For other actions, build parameter XML directly
       paramXml = Object.entries(parameters)
+        .filter(([key]) => 
+          key !== 'limit' && 
+          key !== 'offset' && 
+          key !== 'timestamp' && 
+          key !== 'baseTable' && 
+          key !== 'baseEndpoint' &&
+          !key.endsWith('_operator') &&
+          !key.endsWith('_value2')
+        )
         .map(([key, value]) => `<${key}>${value}</${key}>`)
         .join('');
     }
@@ -157,11 +205,8 @@ export class RemoteAPIManager {
     currentToken?: StoredOAuth2Token | null
   ): Promise<RemoteAPIQueryResult> {
     try {
-      // Load OAuth2 configuration from environment variables (includes service account keys and client credentials)
-      const oauth2Config = OAuth2ConfigManager.loadConfigFromEnv();
-
-      // Note: Password credentials grant uses service account keys
-      // The OAuth2Config already contains the service account access key and secret key
+      // Load OAuth2 configuration from database (with fallback to environment variables)
+      const oauth2Config = await OAuth2ConfigManager.loadConfig();
 
       // Get or refresh token as needed
       const token = await OAuth2ConfigManager.getValidToken(currentToken ?? null, oauth2Config);

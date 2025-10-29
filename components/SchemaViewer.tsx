@@ -51,20 +51,20 @@ export function SchemaViewer({
   const [copyStatus, setCopyStatus] = useState<string>('');
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
 
-  // Auto-fetch schema if not provided
-  useEffect(() => {
-    if (!schema && !loading && !error) {
-      fetchSchema();
-    }
-  }, [tenantId, serviceName]);
-
   const fetchSchema = async () => {
     try {
       const response = await fetch(`/api/schema/${tenantId}/${serviceName}/json`);
+      
+      if (!response.ok) {
+        console.error(`Schema API returned ${response.status}: ${response.statusText}`);
+        return;
+      }
+      
       const data = await response.json();
       
       if (!data.success) {
-        throw new Error(data.error || 'Failed to fetch schema');
+        console.error('Schema fetch failed:', data.error || 'Unknown error');
+        return;
       }
       
       // Schema would be handled by parent component state
@@ -73,6 +73,14 @@ export function SchemaViewer({
       console.error('Failed to fetch schema:', err);
     }
   };
+
+  // Auto-fetch schema if not provided
+  useEffect(() => {
+    if (!schema && !loading && !error) {
+      fetchSchema();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, serviceName]);
 
   const handleCopyJSON = async () => {
     if (!schema) return;

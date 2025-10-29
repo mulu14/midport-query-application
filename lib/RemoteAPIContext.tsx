@@ -32,6 +32,14 @@ interface RemoteAPIContextType {
   isExecuting: boolean;
   /** Whether the add database dialog is visible */
   showAddDialog: boolean;
+  /** Base table reference - preserves original table selection */
+  baseTableReference: {
+    table: string;
+    tableName: string;
+    endpoint: string;
+    tenant: string;
+    apiType: string;
+  } | null;
   /** Function to set the selected tenant */
   setSelectedTenant: (tenant: RemoteAPITenant | null) => void;
   /** Function to set the selected table */
@@ -83,6 +91,15 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
   // OAuth2 token management with service account
   const [currentToken, setCurrentToken] = useState<StoredOAuth2Token | null>(null);
 
+  // Base table reference - preserves original table selection
+  const [baseTableReference, setBaseTableReference] = useState<{
+    table: string;
+    tableName: string;
+    endpoint: string;
+    tenant: string;
+    apiType: string;
+  } | null>(null);
+
   const loadTenants = async () => {
     try {
 
@@ -123,8 +140,40 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
   };
 
   /**
+   * Validates query against base table reference
+   * @private
+   * @param {string} userQuery - The user's SQL query
+   * @returns {{ valid: boolean; warnings: string[] }} Validation result
+   */
+  const validateQuery = (userQuery: string): { valid: boolean; warnings: string[] } => {
+    const warnings: string[] = [];
+    
+    if (!baseTableReference) {
+      return { valid: true, warnings };
+    }
+
+    // Extract FROM clause from user query
+    const fromMatch = userQuery.match(/FROM\s+(\w+)/i);
+    if (fromMatch) {
+      const queryTable = fromMatch[1];
+      
+      // Check if query table matches base table reference
+      if (queryTable !== baseTableReference.table && 
+          queryTable !== baseTableReference.tableName) {
+        warnings.push(
+          `Query FROM '${queryTable}' doesn't match selected table '${baseTableReference.table}'. ` +
+          `Results may be unexpected.`
+        );
+      }
+    }
+
+    return { valid: true, warnings };
+  };
+
+  /**
    * Executes the current SQL query against the selected remote API table
    * Converts SQL query to SOAP request and handles the API call
+   * Validates query against base table reference before execution
    * @async
    * @function executeQuery
    * @throws {Error} If no tenant or table is selected
@@ -134,6 +183,14 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
     if (!selectedTenant || !selectedTable) {
       setError('Please select a tenant and table before running queries');
       return;
+    }
+
+    // Validate query against base table reference
+    const validation = validateQuery(query);
+    if (validation.warnings.length > 0) {
+      console.warn('Query validation warnings:', validation.warnings);
+      // Show warnings but continue execution
+      validation.warnings.forEach(warning => console.warn('⚠️', warning));
     }
 
     setIsExecuting(true);
@@ -147,6 +204,12 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
       const apiType = (selectedTable as any).apiType || 'soap';
       let action: string;
       let parameters = parseParametersFromQuery(query, selectedTable);
+
+      // Add base table reference to parameters for context
+      if (baseTableReference) {
+        parameters.baseTable = baseTableReference.table;
+        parameters.baseEndpoint = baseTableReference.endpoint;
+      }
 
       // Different action determination based on API type
       if (apiType === 'rest') {
@@ -300,6 +363,15 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
     const tableName = getBusinessFriendlyTableName(table);
     const sqlQuery = `SELECT * FROM ${tableName};`;
     setQuery(sqlQuery);
+
+    // Set base table reference - preserves original selection
+    setBaseTableReference({
+      table: tableName,
+      tableName: table.name,
+      endpoint: table.endpoint,
+      tenant: (tenant as any).tenantName || tenant.name,
+      apiType: (table as any).apiType || 'soap'
+    });
   };
 
   /**
@@ -580,6 +652,7 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
     error,
     isExecuting,
     showAddDialog,
+    baseTableReference,
     setSelectedTenant,
     setSelectedTable,
     setQuery,
