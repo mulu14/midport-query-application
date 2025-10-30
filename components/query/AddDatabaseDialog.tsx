@@ -105,6 +105,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
   });
   const [isSaving, setIsSaving] = useState(false);
   const [newExpandField, setNewExpandField] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Helper functions for managing expand fields
   const addExpandField = (field: string) => {
@@ -185,6 +186,7 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSaving(true);
+    setErrorMessage(null);
 
     try {
       if (mode === 'remote' || formData.type === 'api') {
@@ -264,7 +266,8 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
         onClose();
       }
     } catch (error) {
-      // Handle error silently - user will see feedback in UI
+      const errorMsg = error instanceof Error ? error.message : 'An unknown error occurred';
+      setErrorMessage(errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -519,6 +522,14 @@ export default function AddDatabaseDialog({ open, onClose, onSuccess }: AddDatab
                 </div>
               )}
             </>
+          )}
+
+          {/* Error Message Display */}
+          {errorMessage && (
+            <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded relative">
+              <strong className="font-bold">Error: </strong>
+              <span className="block sm:inline">{errorMessage}</span>
+            </div>
           )}
 
           <DialogFooter className="bg-[#1a5f7a] px-4 sm:px-6 py-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 mt-4">

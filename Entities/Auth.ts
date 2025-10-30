@@ -141,3 +141,51 @@ export const DEFAULT_AUTH_VALIDATION: AuthValidationConfig = {
   }
 };
 
+/**
+ * NextAuth.js TypeScript Type Extensions
+ * Extends NextAuth.js default types to include custom fields
+ */
+import { DefaultSession, DefaultUser } from 'next-auth';
+import { JWT, DefaultJWT } from 'next-auth/jwt';
+
+/**
+ * Extend the built-in session types
+ */
+declare module 'next-auth' {
+  /**
+   * Returned by `auth()`, `useSession()`, `getSession()`, etc.
+   */
+  interface Session {
+    user: {
+      id: string;
+      username: string;
+      tenant: string;
+      roles: string[];
+    } & DefaultSession['user'];
+  }
+
+  /**
+   * The shape of the user object returned from `authorize` callback
+   */
+  interface User extends DefaultUser {
+    username: string;
+    tenant: string;
+    roles: string[];
+  }
+}
+
+/**
+ * Extend the built-in JWT types
+ */
+declare module 'next-auth/jwt' {
+  /**
+   * Returned by the `jwt` callback and `getToken`, when using JWT sessions
+   */
+  interface JWT extends DefaultJWT {
+    id: string;
+    username: string;
+    tenant: string;
+    roles: string[];
+  }
+}
+

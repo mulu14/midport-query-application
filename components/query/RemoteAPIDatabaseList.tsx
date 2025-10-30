@@ -325,7 +325,7 @@ export default function RemoteAPIDatabaseList({ onAddDatabase }: RemoteAPIDataba
       <div className="p-3 lg:p-4 border-b border-white/20" style={{backgroundColor: '#004766'}}>
         <div className="flex items-center gap-2">
           <Globe className="w-5 h-5 text-white" />
-          <h2 className="font-bold text-white text-sm lg:text-base tracking-wide">REMOTE API</h2>
+          <h2 className="font-bold text-white text-sm lg:text-base tracking-wide">API and SOAP</h2>
           <span className="text-gray-200 text-xs">Query Platform</span>
         </div>
       </div>

@@ -10,6 +10,7 @@
 import React, { useState } from 'react';
 import { X, UserPlus, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { signIn } from 'next-auth/react';
 
 interface SignUpDialogProps {
   open: boolean;
@@ -63,13 +64,11 @@ export function SignUpDialog({ open, onClose, onSuccess, onSwitchToLogin }: Sign
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
 
-    // Username validation
+    // Username validation - allow alphanumeric and common special characters
     if (!formData.username.trim()) {
       errors.username = 'Username is required';
     } else if (formData.username.length < 3) {
       errors.username = 'Username must be at least 3 characters';
-    } else if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
-      errors.username = 'Username can only contain letters, numbers, and underscores';
     }
 
     // Password validation
@@ -115,6 +114,7 @@ export function SignUpDialog({ open, onClose, onSuccess, onSwitchToLogin }: Sign
     setError(null);
 
     try {
+      // Step 1: Register the user
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -132,9 +132,22 @@ export function SignUpDialog({ open, onClose, onSuccess, onSwitchToLogin }: Sign
 
       const userData = await response.json();
       
-      // Store user session
-      localStorage.setItem('user', JSON.stringify(userData));
-      
+      // Step 2: Automatically log in with NextAuth.js
+      const signInResult = await signIn('credentials', {
+        username: formData.username,
+        password: formData.password,
+        tenant: formData.tenant,
+        redirect: false,
+      });
+
+      if (signInResult?.error) {
+        console.error('Auto-login failed:', signInResult.error);
+        // Registration succeeded but auto-login failed
+        // User can still login manually
+        throw new Error('Account created successfully. Please log in manually.');
+      }
+
+      // Success!
       onSuccess(userData);
       onClose();
       
@@ -193,7 +206,7 @@ export function SignUpDialog({ open, onClose, onSuccess, onSwitchToLogin }: Sign
               {validationErrors.username && (
                 <p className="text-red-400 text-sm mt-1">{validationErrors.username}</p>
               )}
-              <p className="text-slate-400 text-xs mt-1">At least 3 characters, letters, numbers, and underscores only</p>
+              <p className="text-slate-400 text-xs mt-1">At least 3 characters</p>
             </div>
 
             {/* Tenant */}

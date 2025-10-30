@@ -283,6 +283,142 @@ export class SQLiteManager {
   private static async runMigrations(): Promise<void> {
     try {
       // ========================================================================
+      // TABLE 0: users (Authentication)
+      // ========================================================================
+      // Purpose: Store user authentication credentials
+      // Used by: NextAuth.js authentication, /api/auth/* endpoints
+      // Relationships: Parent to user_roles (1:N)
+      // ========================================================================
+      await this.apiExec(`
+        CREATE TABLE IF NOT EXISTS users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT NOT NULL,
+          password_hash TEXT NOT NULL,
+          tenant TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          last_login DATETIME,
+          disabled INTEGER DEFAULT 0,
+          UNIQUE(username, tenant)
+        )
+      `);
+
+      // ========================================================================
+      // TABLE 0.1: roles (Authorization)
+      // ========================================================================
+      // Purpose: Define system roles for RBAC
+      // Used by: Authorization system, admin panels
+      // Relationships: Parent to user_roles (1:N)
+      // Predefined roles: admin, user, viewer
+      // ========================================================================
+      await this.apiExec(`
+        CREATE TABLE IF NOT EXISTS roles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL,
+          description TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // ========================================================================
+      // TABLE 0.2: user_roles (User-Role Junction Table)
+      // ========================================================================
+      // Purpose: Many-to-many relationship between users and roles
+      // Used by: Authorization checks, permission systems
+      // Relationships: Child of users (N:1) and roles (N:1)
+      // ========================================================================
+      await this.apiExec(`
+        CREATE TABLE IF NOT EXISTS user_roles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          role_id INTEGER NOT NULL,
+          assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+          UNIQUE(user_id, role_id)
+        )
+      `);
+
+      // ========================================================================
+      // SEED DATA: Default Roles
+      // ========================================================================
+      // Purpose: Create default system roles if they don't exist
+      // superadmin: Supreme access, can manage everything including other admins
+      // admin: Full system access, can manage users and settings
+      // user: Standard access, can use query platform
+      // viewer: Read-only access, can only view data
+      // ========================================================================
+      try {
+        const existingRoles = await this.apiGet('SELECT COUNT(*) as count FROM roles');
+        if (existingRoles[0].count === 0) {
+          await this.apiPost(
+            'INSERT INTO roles (name, description) VALUES (?, ?)',
+            ['superadmin', 'Supreme access - can manage everything including admins, system settings, and all features']
+          );
+          await this.apiPost(
+            'INSERT INTO roles (name, description) VALUES (?, ?)',
+            ['admin', 'Full system access - can manage users, roles, and all features']
+          );
+          await this.apiPost(
+            'INSERT INTO roles (name, description) VALUES (?, ?)',
+            ['user', 'Standard access - can use query platform and manage own data']
+          );
+          await this.apiPost(
+            'INSERT INTO roles (name, description) VALUES (?, ?)',
+            ['viewer', 'Read-only access - can view data but cannot modify']
+          );
+        }
+      } catch (error) {
+        // Roles might already exist
+      }
+
+      // ========================================================================
+      // SEED DATA: Default Superadmin User
+      // ========================================================================
+      // Purpose: Create default superadmin user if no users exist
+      // Username: Midport
+      // Password: M1dP0rt
+      // Tenant: MIDPORT_DEM
+      // Role: superadmin
+      // ========================================================================
+      try {
+        const existingUsers = await this.apiGet('SELECT COUNT(*) as count FROM users');
+        if (existingUsers[0].count === 0) {
+          // Import EncryptionUtil to encrypt credentials
+          const { EncryptionUtil } = await import('./utils/encryption');
+          
+          const encryptedUsername = EncryptionUtil.encryptUsername('Midport');
+          const encryptedPassword = EncryptionUtil.encryptPassword('M1dP0rt');
+          
+          // Create superadmin user
+          const result = await this.apiPost(
+            'INSERT INTO users (username, password_hash, tenant) VALUES (?, ?, ?)',
+            [encryptedUsername, encryptedPassword, 'MIDPORT_DEM']
+          );
+          
+          const userId = result.lastID;
+          
+          // Get superadmin role ID
+          const superadminRole = await this.apiGet(
+            'SELECT id FROM roles WHERE name = ?',
+            ['superadmin']
+          );
+          
+          if (superadminRole.length > 0) {
+            // Assign superadmin role to the user
+            await this.apiPost(
+              'INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)',
+              [userId, superadminRole[0].id]
+            );
+          }
+          
+          console.log('✅ Default superadmin user created: Midport@MIDPORT_DEM');
+        }
+      } catch (error) {
+        // User might already exist or encryption error
+        console.log('ℹ️ Superadmin user already exists or creation failed');
+      }
+
+      // ========================================================================
       // TABLE 1: databases
       // ========================================================================
       // Purpose: Store local database connections (PostgreSQL, MySQL, MongoDB, etc.)
@@ -333,7 +469,7 @@ export class SQLiteManager {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
           base_url TEXT NOT NULL,
-          tenant_name TEXT NOT NULL UNIQUE,
+          tenant_name TEXT NOT NULL,
           services TEXT NOT NULL,
           full_url TEXT,
           status TEXT CHECK(status IN ('active', 'inactive')) NOT NULL DEFAULT 'active',
@@ -342,78 +478,6 @@ export class SQLiteManager {
         )
       `);
 
-      // ========================================================================
-      // MIGRATION: Convert TEXT id to INTEGER id (Legacy Support)
-      // ========================================================================
-      // Purpose: Handle old databases where id was TEXT instead of INTEGER
-      // Note: This migration only runs if legacy schema is detected
-      // ========================================================================
-      try {
-        const columns = await this.apiGet(`PRAGMA table_info(remote_api_databases)`);
-        const idColumn = columns.find((col: any) => col.name === 'id');
-
-        if (idColumn && idColumn.type === 'TEXT') {
-
-          // Create new table with correct schema
-          await this.apiExec(`
-            CREATE TABLE remote_api_databases_new (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              name TEXT NOT NULL,
-              base_url TEXT NOT NULL,
-              tenant_name TEXT NOT NULL UNIQUE,
-              services TEXT NOT NULL,
-              full_url TEXT,
-              status TEXT CHECK(status IN ('active', 'inactive')) NOT NULL DEFAULT 'active',
-              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-          `);
-
-          // Copy data from old table to new table
-          await this.apiExec(`
-            INSERT INTO remote_api_databases_new (name, base_url, tenant_name, services, full_url, status, created_at, updated_at)
-            SELECT name, base_url, tenant_name, services, full_url, status, created_at, updated_at
-            FROM remote_api_databases
-          `);
-
-          // Drop old table and rename new table
-          await this.apiExec(`DROP TABLE remote_api_databases`);
-          await this.apiExec(`ALTER TABLE remote_api_databases_new RENAME TO remote_api_databases`);
-
-        }
-      } catch (migrationError) {
-        // Migration likely already completed
-      }
-
-      // ========================================================================
-      // MIGRATION: Add missing columns to remote_api_databases (Legacy Support)
-      // ========================================================================
-      // Purpose: Add columns that were added after initial schema
-      // Note: These migrations only run for old databases missing these columns
-      // ========================================================================
-      try {
-        const columns = await this.apiGet(`PRAGMA table_info(remote_api_databases)`);
-
-        // Add full_url column if it doesn't exist (migration)
-        const hasFullUrlColumn = columns.some((col: any) => col.name === 'full_url');
-        if (!hasFullUrlColumn) {
-          await this.apiExec(`ALTER TABLE remote_api_databases ADD COLUMN full_url TEXT`);
-        }
-
-        // Add name column if it doesn't exist (migration)
-        const hasNameColumn = columns.some((col: any) => col.name === 'name');
-        if (!hasNameColumn) {
-          await this.apiExec(`ALTER TABLE remote_api_databases ADD COLUMN name TEXT NOT NULL DEFAULT 'Unknown'`);
-        }
-
-        // Add expand_fields column if it doesn't exist (migration)
-        const hasExpandFieldsColumn = columns.some((col: any) => col.name === 'expand_fields');
-        if (!hasExpandFieldsColumn) {
-          await this.apiExec(`ALTER TABLE remote_api_databases ADD COLUMN expand_fields TEXT`);
-        }
-      } catch (error) {
-        // Migration error (likely table is new)
-      }
 
       // ========================================================================
       // TABLE 4: remote_api_tables
@@ -463,51 +527,17 @@ export class SQLiteManager {
 
 
       // ========================================================================
-      // MIGRATION: Add missing columns to remote_api_tables (Legacy Support)
-      // ========================================================================
-      // Purpose: Add api_type, odata_service, entity_name, updated_at columns
-      // Note: These migrations support transition from SOAP-only to SOAP+REST
-      // ========================================================================
-      try {
-        const tableColumns = await this.apiGet(`PRAGMA table_info(remote_api_tables)`);
-        
-        // Add api_type column if it doesn't exist
-        const hasApiTypeColumn = tableColumns.some((col: any) => col.name === 'api_type');
-        if (!hasApiTypeColumn) {
-          await this.apiExec(`ALTER TABLE remote_api_tables ADD COLUMN api_type TEXT DEFAULT 'soap' CHECK(api_type IN ('soap', 'rest'))`);
-        }
-
-        // Add odata_service column if it doesn't exist
-        const hasODataServiceColumn = tableColumns.some((col: any) => col.name === 'odata_service');
-        if (!hasODataServiceColumn) {
-          await this.apiExec(`ALTER TABLE remote_api_tables ADD COLUMN odata_service TEXT`);
-        }
-
-        // Add entity_name column if it doesn't exist
-        const hasEntityNameColumn = tableColumns.some((col: any) => col.name === 'entity_name');
-        if (!hasEntityNameColumn) {
-          await this.apiExec(`ALTER TABLE remote_api_tables ADD COLUMN entity_name TEXT`);
-        }
-
-        // Add updated_at column if it doesn't exist
-        const hasUpdatedAtColumn = tableColumns.some((col: any) => col.name === 'updated_at');
-        if (!hasUpdatedAtColumn) {
-          // SQLite doesn't allow non-constant defaults when adding columns
-          await this.apiExec(`ALTER TABLE remote_api_tables ADD COLUMN updated_at DATETIME`);
-          // Update existing rows with current timestamp
-          await this.apiExec(`UPDATE remote_api_tables SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL`);
-        }
-      } catch (error) {
-        // Migration error (likely table is new or already migrated)
-      }
-
-      // ========================================================================
       // INDEXES: Performance optimization
       // ========================================================================
       // Purpose: Speed up common queries on frequently accessed columns
       // All indexes use IF NOT EXISTS to prevent duplicate index errors
       // ========================================================================
       await this.apiExec(`
+        CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+        CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant);
+        CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name);
+        CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
         CREATE INDEX IF NOT EXISTS idx_databases_name ON databases(name);
         CREATE INDEX IF NOT EXISTS idx_tables_database_id ON database_tables(database_id);
         CREATE INDEX IF NOT EXISTS idx_remote_api_databases_tenant ON remote_api_databases(tenant_name);
@@ -587,24 +617,25 @@ export class SQLiteManager {
   static async createRemoteAPIDatabase(data: { name?: string; fullUrl: string; baseUrl: string; tenantName: string; services: string; tables: string[]; expandFields?: string[] }): Promise<any> {
     await this.initialize();
 
-    // Check if tenant already exists (tenant_name UNIQUE constraint will handle this)
-    const existingTenant = await this.apiGet(
-      'SELECT id FROM remote_api_databases WHERE tenant_name = ?',
-      [data.tenantName]
+    // Check if database with same name already exists
+    const databaseName = data.name || `${data.tenantName} - ${data.tables[0] || 'default'}`;
+    const existingDatabase = await this.apiGet(
+      'SELECT id FROM remote_api_databases WHERE name = ?',
+      [databaseName]
     );
 
-    if (existingTenant.length > 0) {
-      // Tenant already exists - add new services/tables to existing tenant
-      const tenantId = existingTenant[0].id;
+    if (existingDatabase.length > 0) {
+      // Database with this name already exists - add new services/tables to it
+      const databaseId = existingDatabase[0].id;
       
-      // Get current tables for this tenant
+      // Get current tables for this database
       const currentTables = await this.apiGet(
         'SELECT name FROM remote_api_tables WHERE database_id = ?',
-        [tenantId]
+        [databaseId]
       );
       const currentTableNames = currentTables.map((table: any) => table.name);
       
-      // Filter out tables that already exist
+      // Filter out tables that already exist in THIS database
       const newTables = data.tables.filter(table => !currentTableNames.includes(table));
       
       if (newTables.length > 0) {
@@ -613,12 +644,12 @@ export class SQLiteManager {
           const serviceInfo = this.parseServiceDefinition(table, data.services);
           await this.apiPost(
             'INSERT INTO remote_api_tables (database_id, name, endpoint, api_type, odata_service, entity_name) VALUES (?, ?, ?, ?, ?, ?)',
-            [tenantId, serviceInfo.name, serviceInfo.endpoint, serviceInfo.apiType, serviceInfo.oDataService || null, serviceInfo.entityName || null]
+            [databaseId, serviceInfo.name, serviceInfo.endpoint, serviceInfo.apiType, serviceInfo.oDataService || null, serviceInfo.entityName || null]
           );
         }
       }
       
-      const updatedDatabase = await this.getRemoteAPIDatabaseById(tenantId.toString());
+      const updatedDatabase = await this.getRemoteAPIDatabaseById(databaseId.toString());
       
       // Add a flag to indicate this is an updated existing database
       return {
@@ -627,19 +658,19 @@ export class SQLiteManager {
         isUpdated: newTables.length > 0,
         newTablesAdded: newTables,
         message: newTables.length > 0 
-          ? `Added ${newTables.length} new service(s) to tenant "${data.tenantName}": ${newTables.join(', ')}`
-          : `All services already exist in tenant "${data.tenantName}"`
+          ? `Added ${newTables.length} new service(s) to database "${databaseName}": ${newTables.join(', ')}`
+          : `All services already exist in database "${databaseName}"`
       };
     } else {
-      // Create new tenant
+      // Create new database entry
       try {
         const expandFieldsJson = data.expandFields ? JSON.stringify(data.expandFields) : null;
         const result = await this.apiPost(
           'INSERT INTO remote_api_databases (name, base_url, tenant_name, services, full_url, expand_fields) VALUES (?, ?, ?, ?, ?, ?)',
-          [data.name || `${data.tenantName} - ${data.tables[0] || 'default'}`, data.baseUrl, data.tenantName, data.services, data.fullUrl || '', expandFieldsJson]
+          [databaseName, data.baseUrl, data.tenantName, data.services, data.fullUrl || '', expandFieldsJson]
         );
 
-        const tenantId = result.lastID;
+        const databaseId = result.lastID;
 
         // Insert tables
         if (data.tables && data.tables.length > 0) {
@@ -647,16 +678,16 @@ export class SQLiteManager {
             const serviceInfo = this.parseServiceDefinition(table, data.services);
             await this.apiPost(
               'INSERT INTO remote_api_tables (database_id, name, endpoint, api_type, odata_service, entity_name) VALUES (?, ?, ?, ?, ?, ?)',
-              [tenantId, serviceInfo.name, serviceInfo.endpoint, serviceInfo.apiType, serviceInfo.oDataService || null, serviceInfo.entityName || null]
+              [databaseId, serviceInfo.name, serviceInfo.endpoint, serviceInfo.apiType, serviceInfo.oDataService || null, serviceInfo.entityName || null]
             );
           }
         }
 
-        const newDatabase = await this.getRemoteAPIDatabaseById(tenantId.toString());
+        const newDatabase = await this.getRemoteAPIDatabaseById(databaseId.toString());
         return {
           ...newDatabase,
           isExisting: false,
-          message: `Database "${data.tenantName}" created successfully with ${data.tables.length} service(s)`
+          message: `Database "${databaseName}" created successfully with ${data.tables.length} service(s)`
         };
       } catch (error) {
         throw error;

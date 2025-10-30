@@ -123,7 +123,6 @@ export default function EditDatabaseDialog({ open, onClose, onSuccess, database 
       onSuccess();
       onClose();
     } catch (error) {
-      console.error('Error updating database:', error);
       // Error handling will be shown in the UI by the parent component
     } finally {
       setIsSaving(false);

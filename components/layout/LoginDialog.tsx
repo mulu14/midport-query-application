@@ -10,6 +10,8 @@
 import React, { useState } from 'react';
 import { X, LogIn, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { signIn } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 interface LoginDialogProps {
   open: boolean;
@@ -23,6 +25,7 @@ interface LoginDialogProps {
  * Handles user authentication with username and password
  */
 export function LoginDialog({ open, onClose, onSuccess, onSwitchToSignUp }: LoginDialogProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -30,7 +33,8 @@ export function LoginDialog({ open, onClose, onSuccess, onSwitchToSignUp }: Logi
   // Form state
   const [formData, setFormData] = useState({
     username: '',
-    password: ''
+    password: '',
+    tenant: ''
   });
 
   // Validation errors
@@ -70,12 +74,17 @@ export function LoginDialog({ open, onClose, onSuccess, onSwitchToSignUp }: Logi
       errors.password = 'Password must be at least 6 characters';
     }
 
+    if (!formData.tenant.trim()) {
+      errors.tenant = 'Tenant is required';
+    }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   /**
    * Handle form submission
+   * Now uses NextAuth.js signIn function
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,27 +97,20 @@ export function LoginDialog({ open, onClose, onSuccess, onSwitchToSignUp }: Logi
     setError(null);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+      // Use NextAuth.js signIn with automatic redirect
+      const result = await signIn('credentials', {
+        username: formData.username,
+        password: formData.password,
+        tenant: formData.tenant,
+        callbackUrl: '/', // Redirect to home page after login
+        redirect: true, // Let NextAuth handle the redirect
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Login failed');
+      // This code won't execute if redirect is true
+      // But kept for error handling
+      if (result?.error) {
+        throw new Error('Invalid credentials. Please check your username, password, and tenant.');
       }
-
-      const userData = await response.json();
-      
-      // Store user session
-      localStorage.setItem('user', JSON.stringify(userData));
-      
-      onSuccess(userData);
-      onClose();
-      
-      // Reset form
-      setFormData({ username: '', password: '' });
     } catch (error) {
       console.error('Login error:', error);
       setError(error instanceof Error ? error.message : 'Login failed. Please check your credentials.');
@@ -161,6 +163,24 @@ export function LoginDialog({ open, onClose, onSuccess, onSwitchToSignUp }: Logi
               />
               {validationErrors.username && (
                 <p className="text-red-400 text-sm mt-1">{validationErrors.username}</p>
+              )}
+            </div>
+
+            {/* Tenant */}
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">
+                Tenant <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.tenant}
+                onChange={(e) => updateField('tenant', e.target.value)}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                placeholder="Enter your tenant name"
+                autoComplete="organization"
+              />
+              {validationErrors.tenant && (
+                <p className="text-red-400 text-sm mt-1">{validationErrors.tenant}</p>
               )}
             </div>
 

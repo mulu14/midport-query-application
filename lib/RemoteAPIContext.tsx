@@ -118,7 +118,9 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
         tables: db.tables || [],
         status: db.status === 'active' ? 'connected' : 'disconnected',
         fullUrl: db.fullUrl, // Include the full URL from database configuration
+        baseUrl: db.baseUrl, // Include base URL for editing
         tenantName: db.tenantName, // Keep the actual tenant ID for API calls
+        services: db.services, // Include services path for editing
         expandFields: db.expandFields || [] // Include expand fields for OData queries
       }));
 
@@ -188,7 +190,6 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
     // Validate query against base table reference
     const validation = validateQuery(query);
     if (validation.warnings.length > 0) {
-      console.warn('Query validation warnings:', validation.warnings);
       // Show warnings but continue execution
       validation.warnings.forEach(warning => console.warn('⚠️', warning));
     }
@@ -291,19 +292,6 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Use server-side API endpoint for OAuth2 and API calls
-      console.log('🚀 API Request Configuration:', {
-        apiType: config.apiType,
-        tenant: config.tenant,
-        table: config.table,
-        action: config.action,
-        oDataService: config.oDataService,
-        entityName: config.entityName,
-        expandFields: config.expandFields,
-        parameters: config.parameters,
-        fullUrl: config.fullUrl,
-        sqlQuery: config.sqlQuery
-      });
-      
       const response = await fetch('/api/remote-query', {
         method: 'POST',
         headers: {
@@ -461,7 +449,6 @@ export function RemoteAPIProvider({ children }: { children: React.ReactNode }) {
       const expandMatch = query.match(/expand\s*=\s*['"]([^'"]+)['"]/i);
       if (expandMatch) {
         parameters.expand = expandMatch[1];
-        console.log('📝 EXPAND PARAMETER DETECTED:', parameters.expand);
       }
     }
 

@@ -7,13 +7,14 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Settings, Home, Database, LogIn, UserPlus, User, LogOut } from 'lucide-react';
+import { Settings, Home, Database, LogIn, UserPlus, User, LogOut, Shield } from 'lucide-react';
 import { LoginDialog } from './LoginDialog';
 import { SignUpDialog } from './SignUpDialog';
 import { Button } from '@/components/ui/button';
+import { useSession, signOut } from 'next-auth/react';
 
 /**
  * Navigation Header Component
@@ -22,36 +23,23 @@ export function NavigationHeader() {
   const pathname = usePathname();
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [showSignUpDialog, setShowSignUpDialog] = useState(false);
-  const [user, setUser] = useState<{ username: string; tenant: string } | null>(null);
-
-  /**
-   * Check for stored user session on mount
-   */
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (error) {
-        console.error('Error parsing stored user:', error);
-        localStorage.removeItem('user');
-      }
-    }
-  }, []);
+  
+  // Use NextAuth.js session
+  const { data: session, status } = useSession();
 
   /**
    * Handle successful login/signup
    */
   const handleAuthSuccess = (userData: { username: string; tenant: string }) => {
-    setUser(userData);
+    // NextAuth will handle session automatically
+    // Just close the dialog
   };
 
   /**
    * Handle logout
    */
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    setUser(null);
+  const handleLogout = async () => {
+    await signOut({ redirect: false });
   };
 
   /**
@@ -70,7 +58,8 @@ export function NavigationHeader() {
     setShowLoginDialog(true);
   };
 
-  const navItems = [
+  // Build navigation items - only visible for logged-in users
+  const navItems = session ? [
     {
       name: 'Query Platform',
       href: '/',
@@ -82,8 +71,14 @@ export function NavigationHeader() {
       href: '/credentials',
       icon: Settings,
       active: pathname === '/credentials'
+    },
+    {
+      name: 'Admin Panel',
+      href: '/admin',
+      icon: Shield,
+      active: pathname === '/admin'
     }
-  ];
+  ] : [];
 
   return (
     <>
@@ -94,7 +89,10 @@ export function NavigationHeader() {
             <div className="flex items-center space-x-3">
               <Database className="w-8 h-8 text-white" />
               <div>
-                <h1 className="text-lg font-bold text-white">Midport Scandinavia</h1>
+                <h1 className="text-lg font-bold text-white">
+                  <span className="sm:hidden">Midport</span>
+                  <span className="hidden sm:inline">Midport Scandinavia</span>
+                </h1>
                 <p className="text-xs text-gray-200 -mt-1">Query Platform</p>
               </div>
             </div>
@@ -129,12 +127,18 @@ export function NavigationHeader() {
 
               {/* Auth Section */}
               <div className="flex items-center space-x-2 border-l border-white/20 pl-4">
-                {user ? (
-                  // Logged in - show user info and logout
+                {status === 'loading' ? (
+                  // Loading state
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-pulse flex space-x-2">
+                      <div className="h-8 w-16 bg-slate-600 rounded"></div>
+                    </div>
+                  </div>
+                ) : session ? (
+                  // Logged in - show tenant name only (hide username for security)
                   <div className="flex items-center space-x-3">
                     <div className="hidden md:block text-right">
-                      <div className="text-sm font-medium text-white">{user.username}</div>
-                      <div className="text-xs text-gray-300">{user.tenant}</div>
+                      <div className="text-sm font-medium text-white">{session.user.tenant}</div>
                     </div>
                     <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-semibold">
                       <User className="w-4 h-4" />

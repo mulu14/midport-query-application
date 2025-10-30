@@ -14,6 +14,8 @@ import { SidebarModeProvider } from '@/lib/SidebarModeContext';
 import { DatabaseSidebar } from '@/components/layout/DatabaseSidebar';
 import { NavigationHeader } from '@/components/layout/NavigationHeader';
 import Footer from '@/components/layout/Footer';
+import { SessionProvider } from 'next-auth/react';
+import { ProtectedContent } from '@/components/providers/ProtectedContent';
 
 /**
  * Geist Sans font configuration
@@ -61,39 +63,43 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <SidebarModeProvider>
-          <DatabaseProvider>
-            <RemoteAPIProvider>
-              <div className="min-h-screen flex flex-col relative" style={{backgroundColor: '#004766'}}>
-                {/* Subtle pattern overlay */}
-                <div className="absolute inset-0 opacity-5">
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,#ffffff_1px,transparent_0)] bg-[size:20px_20px]"></div>
-                </div>
+        <SessionProvider>
+          <SidebarModeProvider>
+            <DatabaseProvider>
+              <RemoteAPIProvider>
+                <div className="min-h-screen flex flex-col relative" style={{backgroundColor: '#004766'}}>
+                  {/* Subtle pattern overlay */}
+                  <div className="absolute inset-0 opacity-5">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,#ffffff_1px,transparent_0)] bg-[size:20px_20px]"></div>
+                  </div>
 
-                {/* Navigation Header */}
-                <NavigationHeader />
+                  {/* Navigation Header - Always visible */}
+                  <NavigationHeader />
 
-                {/* Main layout */}
-                <div className="relative z-10 flex flex-col lg:flex-row flex-1 min-h-0">
-                  {/* Sidebar */}
-                  <div className="w-full lg:w-72 flex-shrink-0 flex flex-col">
-                    <div className="flex-1 min-h-0">
-                      <DatabaseSidebar />
+                  {/* Protected Main layout - Only visible when authenticated */}
+                  <ProtectedContent>
+                    <div className="relative z-10 flex flex-col lg:flex-row flex-1 min-h-0">
+                      {/* Sidebar */}
+                      <div className="w-full lg:w-72 flex-shrink-0 flex flex-col">
+                        <div className="flex-1 min-h-0">
+                          <DatabaseSidebar />
+                        </div>
+                      </div>
+
+                      {/* Main content area */}
+                      <div className="flex-1 overflow-auto min-h-0" style={{backgroundColor: 'rgba(0, 71, 102, 0.95)'}}>
+                        {children}
+                      </div>
                     </div>
-                  </div>
+                  </ProtectedContent>
 
-                  {/* Main content area */}
-                  <div className="flex-1 overflow-auto min-h-0" style={{backgroundColor: 'rgba(0, 71, 102, 0.95)'}}>
-                    {children}
-                  </div>
+                  {/* Footer */}
+                  <Footer />
                 </div>
-
-                {/* Footer */}
-                <Footer />
-              </div>
-          </RemoteAPIProvider>
-        </DatabaseProvider>
-        </SidebarModeProvider>
+              </RemoteAPIProvider>
+            </DatabaseProvider>
+          </SidebarModeProvider>
+        </SessionProvider>
       </body>
     </html>
   );

@@ -10,6 +10,8 @@ import sqlite3 from 'sqlite3';
 import { join } from 'path';
 import { EncryptionUtil } from '@/lib/utils/encryption';
 import type { SignUpRequest, SignUpResponse, AuthErrorResponse } from '@/Entities/Auth';
+import { checkRateLimit, resetRateLimit } from '@/lib/utils/rate-limiter';
+import { logSignupSuccess, logSignupFailure } from '@/lib/utils/audit-logger';
 
 // Database path
 const dbPath = join(process.cwd(), 'user-auth.db');
@@ -57,6 +59,24 @@ export async function POST(request: NextRequest) {
   try {
     const body: SignUpRequest = await request.json();
     const { username, password, tenant } = body;
+
+    // Rate limiting - ONLY for unauthenticated requests
+    // Authenticated users (e.g., admins creating accounts) are exempt
+    const clientIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    const rateLimitKey = username ? `signup:${username}` : `signup-ip:${clientIP}`;
+    
+    // Note: We don't check auth here because signup is a public endpoint
+    // Rate limiting is only applied to prevent abuse
+    const rateLimitResult = checkRateLimit(rateLimitKey);
+    
+    if (!rateLimitResult.success) {
+      const resetMinutes = Math.ceil((rateLimitResult.resetTime - Date.now()) / 60000);
+      logSignupFailure(username || 'unknown', tenant || 'unknown', 'Rate limit exceeded', clientIP);
+      return NextResponse.json(
+        { message: `Too many signup attempts. Please try again in ${resetMinutes} minutes.` },
+        { status: 429 }
+      );
+    }
 
     // Validation
     const errors: string[] = [];
@@ -122,6 +142,10 @@ export async function POST(request: NextRequest) {
     });
 
     db.close();
+
+    // Reset rate limit and log successful signup
+    resetRateLimit(rateLimitKey);
+    logSignupSuccess(username, tenant, clientIP);
 
     // Return user data (without password)
     const response: SignUpResponse = {
